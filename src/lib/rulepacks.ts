@@ -29,31 +29,29 @@ export type RulePack = {
 const apiKey = process.env.AIRTABLE_API_KEY?.trim();
 const baseId = process.env.AIRTABLE_BASE_ID;
 const rpTableId = process.env.TB_RULEPACKS;
+
 const base = apiKey && baseId ? new Airtable({ apiKey }).base(baseId) : null;
-const table = (id?: string) => { if (!base || !id) throw new Error("RulePacks table not configured"); return base(id); };
+const table = (id?: string) => {
+  if (!base) throw new Error("RulePacks: Airtable base not configured");
+  if (!id) throw new Error("RulePacks: TB_RULEPACKS not set");
+  return base(id);
+};
 
 export async function listRulePacks() {
-  try {
-    const recs = await table(rpTableId).select({ filterByFormula: "Active", maxRecords: 200 }).firstPage();
-    return recs.map(r => ({ id: r.id, ...(r.fields as any) }));
-  } catch (error) {
-    console.error("Error listing rule packs:", error);
-    return [];
-  }
+  const tbl = table(rpTableId);
+  // Checkbox filter must be wrapped in {}
+  const recs = await tbl.select({ filterByFormula: "{Active}", maxRecords: 200 }).firstPage();
+  return recs.map(r => ({ id: r.id, ...(r.fields as any) }));
 }
 
-export async function getRulePackByKey(key: string): Promise<RulePack | null> {
-  try {
-    const recs = await table(rpTableId).select({ maxRecords: 50 }).firstPage();
-    const match = recs.find(r => (r.fields as any).Key === key && (r.fields as any).Active);
-    if (!match) return null;
-    const f = match.fields as any;
-    const raw = typeof f.Json === "string" ? f.Json : JSON.stringify(f.Json || {});
-    const pack = JSON.parse(raw || "{}");
-    const start = pack.start || Object.keys(pack.nodes || {})[0];
-    return { id: match.id, key: f.Key, equipmentType: f.EquipmentType, model: f.Model, plcVersion: f.PLCVersion, start, nodes: pack.nodes || {} };
-  } catch (error) {
-    console.error("Error getting rule pack by key:", error);
-    return null;
-  }
+export async function getRulePackByKey(key: string) {
+  const packs = await listRulePacks();
+  const match = packs.find((p:any) => p.Key === key);
+  if (!match) return null;
+  const f = match as any;
+  const raw = typeof f.Json === "string" ? f.Json : JSON.stringify(f.Json || {});
+  let parsed:any = {};
+  try { parsed = JSON.parse(raw || "{}"); } catch { parsed = {}; }
+  const start = parsed.start || Object.keys(parsed.nodes || {})[0];
+  return { id: match.id, key: f.Key, equipmentType: f.EquipmentType, model: f.Model, plcVersion: f.PLCVersion, start, nodes: parsed.nodes || {} };
 }
