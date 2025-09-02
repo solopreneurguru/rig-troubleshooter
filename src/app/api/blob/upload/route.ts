@@ -63,7 +63,6 @@ export async function POST(req: Request) {
           BlobURL: uploaded.url,
           MimeType: type,
           SizeBytes: typeof size === "number" ? size : undefined,
-          Filename: finalName,
           Notes: notes,
           RigId: rigId,
         });

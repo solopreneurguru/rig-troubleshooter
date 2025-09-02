@@ -1,6 +1,6 @@
 import Airtable from "airtable";
 
-const apiKey = process.env.AIRTABLE_API_KEY;
+const apiKey = process.env.AIRTABLE_API_KEY?.trim();
 const baseId = process.env.AIRTABLE_BASE_ID;
 const rigsTableId = process.env.TB_RIGS;
 const docsTableId = process.env.TB_DOCS;
