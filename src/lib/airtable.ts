@@ -70,10 +70,28 @@ export async function createDocument(fields: CreateDocumentInput) {
 // ---------- Sessions / Actions / Readings ----------
 export async function createSession(title: string, problem?: string, rigId?: string) {
   const tbl = table(sessionsTableId);
-  const fields: any = { Title: title || `Session ${Date.now()}`, Problem: problem || "", Status: "Open" };
+  const fields: any = { Title: title || `Session ${Date.now()}`, Status: "Open" };
   if (rigId) fields.Rig = [{ id: rigId }];
-  const recs = await tbl.create([{ fields }]);
-  return recs[0].id;
+  
+  // Try to create with Problem field first, fallback without it if field doesn't exist
+  if (problem) {
+    try {
+      fields.Problem = problem;
+      const recs = await tbl.create([{ fields }]);
+      return recs[0].id;
+    } catch (e: any) {
+      if (e?.message?.includes("Unknown field name") && e?.message?.includes("Problem")) {
+        console.warn("Problem field doesn't exist in Sessions table, creating without it");
+        delete fields.Problem;
+        const recs = await tbl.create([{ fields }]);
+        return recs[0].id;
+      }
+      throw e; // Re-throw if it's a different error
+    }
+  } else {
+    const recs = await tbl.create([{ fields }]);
+    return recs[0].id;
+  }
 }
 
 export type Step = {
