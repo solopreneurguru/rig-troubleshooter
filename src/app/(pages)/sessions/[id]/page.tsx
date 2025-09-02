@@ -2,7 +2,15 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
-type Step = { key: string; instruction: string; expect?: string; citation?: string; };
+type Step = { 
+  key: string; 
+  instruction: string; 
+  expect?: string; 
+  citation?: string; 
+  unit?: string;
+  hazardNote?: string;
+  requireConfirm?: boolean;
+};
 
 export default function SessionWorkspace() {
   const params = useParams<{ id: string }>();
@@ -13,6 +21,7 @@ export default function SessionWorkspace() {
   const [value, setValue] = useState<string>("");
   const [pass, setPass] = useState<boolean>(true);
   const [status, setStatus] = useState<string>("");
+  const [safetyConfirmed, setSafetyConfirmed] = useState<boolean>(false);
   const [fTitle, setFTitle] = useState("");
   const [fOutcome, setFOutcome] = useState("Resolved");
   const [fSummary, setFSummary] = useState("");
@@ -42,11 +51,15 @@ export default function SessionWorkspace() {
 
   async function submit() {
     if (!step) return;
+    if (step.requireConfirm && !safetyConfirmed) {
+      alert("Please confirm safety before proceeding");
+      return;
+    }
     setStatus("Submitting reading...");
     const res = await fetch("/api/plan/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId, actionId, stepKey: step.key, value, pass, order }),
+      body: JSON.stringify({ sessionId, actionId, stepKey: step.key, value, pass, unit: step.unit, order }),
     });
     const json = await res.json();
     if (json.ok && !json.done) {
@@ -55,6 +68,7 @@ export default function SessionWorkspace() {
       setOrder(json.order);
       setValue("");
       setPass(true);
+      setSafetyConfirmed(false);
       setStatus("");
     } else if (json.ok && json.done) {
       setStatus("Plan complete. You can close the session or escalate.");
@@ -89,13 +103,27 @@ export default function SessionWorkspace() {
           <p className="text-base">{step.instruction}</p>
           {step.expect && <p className="text-sm opacity-80"><strong>Expect:</strong> {step.expect}</p>}
           {step.citation && <p className="text-xs opacity-60"><strong>Why:</strong> {step.citation}</p>}
+          
+          {step.hazardNote && (
+            <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-sm">
+              <strong>⚠️ Safety Warning:</strong> {step.hazardNote}
+            </div>
+          )}
+          
           <div className="space-y-2 pt-2">
-            <input 
-              className="w-full border rounded p-2" 
-              placeholder="Enter reading/value" 
-              value={value} 
-              onChange={e => setValue(e.target.value)} 
-            />
+            <div className="flex gap-2">
+              <input 
+                className="flex-1 border rounded p-2" 
+                placeholder="Enter reading/value" 
+                value={value} 
+                onChange={e => setValue(e.target.value)} 
+              />
+              {step.unit && (
+                <span className="px-3 py-2 bg-gray-100 border rounded text-sm flex items-center">
+                  {step.unit}
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-4">
               <label>
                 <input 
@@ -114,9 +142,22 @@ export default function SessionWorkspace() {
                 /> Fail
               </label>
             </div>
+            
+            {step.requireConfirm && (
+              <label className="flex items-center gap-2 text-sm">
+                <input 
+                  type="checkbox" 
+                  checked={safetyConfirmed} 
+                  onChange={e => setSafetyConfirmed(e.target.checked)} 
+                />
+                I confirm it's safe to proceed
+              </label>
+            )}
+            
             <button 
               onClick={submit} 
-              className="px-4 py-2 rounded bg-black text-white"
+              disabled={step.requireConfirm && !safetyConfirmed}
+              className="px-4 py-2 rounded bg-black text-white disabled:opacity-50"
             >
               Submit
             </button>

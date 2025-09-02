@@ -10,6 +10,12 @@ const actionsTableId = process.env.TB_ACTIONS;
 const readingsTableId = process.env.TB_READINGS;
 const findingsTableId = process.env.TB_FINDINGS;
 
+// Result mapping configuration
+const RESULT_PASS = (process.env.AT_RESULT_PASS_OPTION || "Pass").trim();
+const RESULT_FAIL = (process.env.AT_RESULT_FAIL_OPTION || "Fail").trim();
+const READING_PASS = (process.env.AT_READING_PASS_OPTION || RESULT_PASS).trim();
+const READING_FAIL = (process.env.AT_READING_FAIL_OPTION || RESULT_FAIL).trim();
+
 if (!apiKey || !baseId) {
   console.warn("[airtable] Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID");
 }
@@ -70,29 +76,28 @@ export async function createDocument(fields: CreateDocumentInput) {
 }
 
 // ---------- Sessions / Actions / Readings ----------
-export async function createSession(title: string, problem?: string, rigId?: string) {
+export async function getSessionById(id: string) {
+  const rec = await table(sessionsTableId).find(id);
+  return { id: rec.id, ...(rec.fields as any) };
+}
+
+export async function createSession(title: string, problem?: string, rigId?: string, rulePackKey?: string) {
   const tbl = table(sessionsTableId);
-  const fields: any = { Title: title || `Session ${Date.now()}`, Status: "Open" };
-  if (rigId) fields.Rig = linkIds(rigId);
-  
-  // Try to create with Problem field first, fallback without it if field doesn't exist
-  if (problem) {
-    try {
-      fields.Problem = problem;
-      const recs = await tbl.create([{ fields }]);
-      return recs[0].id;
-    } catch (e: any) {
-      if (e?.message?.includes("Unknown field name") && e?.message?.includes("Problem")) {
-        console.warn("Problem field doesn't exist in Sessions table, creating without it");
-        delete fields.Problem;
-        const recs = await tbl.create([{ fields }]);
-        return recs[0].id;
-      }
-      throw e; // Re-throw if it's a different error
-    }
-  } else {
+  const problemField = (process.env.SESSIONS_PROBLEM_FIELD || "Problem").trim();
+  const rpField = (process.env.SESSIONS_RULEPACK_FIELD || "RulePackKey").trim();
+  const baseFields: any = { Title: title || `Session ${Date.now()}`, Status: "Open" };
+  if (rigId) baseFields.Rig = linkIds(rigId);
+  const tryCreate = async (withProblem: boolean) => {
+    const fields: any = { ...baseFields };
+    if (withProblem && problem) fields[problemField] = problem;
+    if (rulePackKey) fields[rpField] = rulePackKey;
     const recs = await tbl.create([{ fields }]);
     return recs[0].id;
+  };
+  try { return await tryCreate(true); }
+  catch (e:any) {
+    if (/Unknown field name/i.test(String(e?.message||e))) return await tryCreate(false);
+    throw e;
   }
 }
 
@@ -119,14 +124,15 @@ export async function createAction(sessionId: string, order: number, step: Step)
 
 export async function updateActionResult(actionId: string, result: "pass"|"fail") {
   const tbl = table(actionsTableId);
-  await tbl.update([{ id: actionId, fields: { Result: result } as any }]);
+  const val = result === "pass" ? RESULT_PASS : RESULT_FAIL;
+  await tbl.update([{ id: actionId, fields: { Result: val } as any }]);
 }
 
 export async function createReading(actionId: string, value: string, unit?: string, passFail?: "pass"|"fail") {
   const tbl = table(readingsTableId);
   const fields: any = { Action: linkIds(actionId), Value: value };
   if (unit) fields.Unit = unit;
-  if (passFail) fields.PassFail = passFail;
+  if (passFail) fields.PassFail = passFail === "pass" ? READING_PASS : READING_FAIL;
   const recs = await tbl.create([{ fields }]);
   return recs[0].id;
 }
@@ -188,7 +194,8 @@ export async function updateFinding(id: string, fields: Partial<{ ReportURL: str
 export function envStatus() {
   const keys = [
     "AIRTABLE_API_KEY","AIRTABLE_BASE_ID","TB_RIGS","TB_EQUIP_TYPES","TB_RIG_EQUIP",
-    "TB_DOCS","TB_SESSIONS","TB_ACTIONS","TB_READINGS","TB_FINDINGS","TB_TECHS","BLOB_READ_WRITE_TOKEN",
+    "TB_DOCS","TB_SESSIONS","TB_ACTIONS","TB_READINGS","TB_FINDINGS","TB_TECHS","TB_RULEPACKS",
+    "SESSIONS_RULEPACK_FIELD","BLOB_READ_WRITE_TOKEN",
   ] as const;
   return Object.fromEntries(keys.map((k) => [k, process.env[k] ? "✓ set" : "✗ missing"]));
 }
