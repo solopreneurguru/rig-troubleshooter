@@ -112,7 +112,6 @@ export async function createAction(sessionId: string, order: number, step: Step)
     Expected: step.expect || "",
     Citation: step.citation || "",
     Order: order,
-    Result: "pending",
   };
   const recs = await tbl.create([{ fields }]);
   return recs[0].id;
