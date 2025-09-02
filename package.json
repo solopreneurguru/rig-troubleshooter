@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.3.0",
     "@vercel/blob": "^1.1.1",
     "airtable": "^0.12.2",
     "next": "15.5.2",
