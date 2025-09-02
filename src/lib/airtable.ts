@@ -16,6 +16,8 @@ if (!apiKey || !baseId) {
 
 const base = apiKey && baseId ? new Airtable({ apiKey }).base(baseId) : null;
 
+const linkIds = (id?: string) => (id ? [id] : undefined);
+
 function table(tableId?: string) {
   if (!base) throw new Error("Airtable base not configured");
   if (!tableId) throw new Error("Airtable table ID not provided");
@@ -61,8 +63,8 @@ export async function createDocument(fields: CreateDocumentInput) {
   if (fields.SizeBytes != null) payload.SizeBytes = fields.SizeBytes;
   if (fields.Filename) payload.Filename = fields.Filename;
   if (fields.Notes) payload.Notes = fields.Notes;
-  if (fields.RigId) payload.Rig = [{ id: fields.RigId }];
-  if (fields.SessionId) payload.Session = [{ id: fields.SessionId }];
+  if (fields.RigId) payload.Rig = linkIds(fields.RigId);
+  if (fields.SessionId) payload.Session = linkIds(fields.SessionId);
   const recs = await tbl.create([{ fields: payload }]);
   return { id: recs[0].id, fields: recs[0].fields as any };
 }
@@ -71,7 +73,7 @@ export async function createDocument(fields: CreateDocumentInput) {
 export async function createSession(title: string, problem?: string, rigId?: string) {
   const tbl = table(sessionsTableId);
   const fields: any = { Title: title || `Session ${Date.now()}`, Status: "Open" };
-  if (rigId) fields.Rig = [{ id: rigId }];
+  if (rigId) fields.Rig = linkIds(rigId);
   
   // Try to create with Problem field first, fallback without it if field doesn't exist
   if (problem) {
@@ -104,7 +106,7 @@ export type Step = {
 export async function createAction(sessionId: string, order: number, step: Step) {
   const tbl = table(actionsTableId);
   const fields: any = {
-    Session: [{ id: sessionId }],
+    Session: linkIds(sessionId),
     StepKey: step.key,
     Instruction: step.instruction,
     Expected: step.expect || "",
@@ -123,7 +125,7 @@ export async function updateActionResult(actionId: string, result: "pass"|"fail"
 
 export async function createReading(actionId: string, value: string, unit?: string, passFail?: "pass"|"fail") {
   const tbl = table(readingsTableId);
-  const fields: any = { Action: [{ id: actionId }], Value: value };
+  const fields: any = { Action: linkIds(actionId), Value: value };
   if (unit) fields.Unit = unit;
   if (passFail) fields.PassFail = passFail;
   const recs = await tbl.create([{ fields }]);
@@ -139,24 +141,25 @@ export async function getSessionBundle(sessionId: string) {
     .select({ maxRecords: 500, sort: [{ field: "Order", direction: "asc" }] })
     .firstPage();
   const actions = aRecs.filter((r) => {
-    const links = (r.fields as any).Session as any[];
-    return Array.isArray(links) && links.some((l: any) => l?.id === sessionId);
+    const links = (r.fields as any).Session as string[] | undefined;
+    return Array.isArray(links) && links.includes(sessionId);
   });
 
   const rRecs = await table(readingsTableId).select({ maxRecords: 1000 }).firstPage();
   const readingsByAction: Record<string, any[]> = {};
   for (const rd of rRecs) {
-    const links = (rd.fields as any).Action as any[];
-    const aId = Array.isArray(links) && links[0]?.id;
+    const links = (rd.fields as any).Action as string[] | undefined;
+    const aId = Array.isArray(links) ? links[0] : undefined;
     if (aId) (readingsByAction[aId] ||= []).push(rd.fields);
   }
 
   const actionsFull = actions.map((a) => ({ id: a.id, ...(a.fields as any), readings: readingsByAction[a.id] || [] }));
 
   let rig: any = null;
-  const rigLink = (sRec.fields as any).Rig as any[];
-  if (Array.isArray(rigLink) && rigLink[0]?.id) {
-    try { const rr = await table(rigsTableId).find(rigLink[0].id); rig = { id: rr.id, ...(rr.fields as any) }; } catch {}
+  const rigLink = (sRec.fields as any).Rig as string[] | undefined;
+  const rigId = Array.isArray(rigLink) ? rigLink[0] : undefined;
+  if (rigId) {
+    try { const rr = await table(rigsTableId).find(rigId); rig = { id: rr.id, ...(rr.fields as any) }; } catch {}
   }
 
   return { session, rig, actions: actionsFull };
@@ -169,8 +172,8 @@ type CreateFindingInput = {
 };
 export async function createFinding(fields: CreateFindingInput) {
   const tbl = table(findingsTableId);
-  const payload: any = { Title: fields.Title, Session: [{ id: fields.SessionId }] };
-  if (fields.RigId) payload.Rig = [{ id: fields.RigId }];
+  const payload: any = { Title: fields.Title, Session: linkIds(fields.SessionId)! };
+  if (fields.RigId) payload.Rig = linkIds(fields.RigId);
   if (fields.Outcome) payload.Outcome = fields.Outcome;
   if (fields.Summary) payload.Summary = fields.Summary;
   if (fields.Parts) payload.Parts = fields.Parts;
