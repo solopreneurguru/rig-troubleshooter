@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import { FINDING_OUTCOMES } from "@/lib/airtable";
 
 type Step = { 
   key: string; 
@@ -265,11 +266,9 @@ export default function SessionWorkspace() {
             value={fOutcome} 
             onChange={e => setFOutcome(e.target.value)}
           >
-            <option>Resolved</option>
-            <option>Escalate-Electrical</option>
-            <option>Escalate-Controls</option>
-            <option>Escalate-Mechanical</option>
-            <option>Monitor</option>
+            {FINDING_OUTCOMES.map(outcome => (
+              <option key={outcome} value={outcome}>{outcome}</option>
+            ))}
           </select>
           <textarea 
             className="w-full border rounded p-2 bg-neutral-900 text-neutral-100 border-neutral-700 placeholder:text-neutral-400" 

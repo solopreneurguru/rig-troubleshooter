@@ -238,6 +238,10 @@ export async function updateFinding(id: string, fields: Partial<{ ReportURL: str
   await tbl.update([{ id, fields: fields as any }]);
 }
 
+export const FINDING_OUTCOMES = [
+  'Resolved','Escalate-Electrical','Escalate-Controls','Escalate-Mechanical','Unresolved','Needs Parts','Needs Vendor'
+] as const;
+
 export function envStatus() {
   const keys = [
     "AIRTABLE_API_KEY","AIRTABLE_BASE_ID","TB_RIGS","TB_EQUIP_TYPES","TB_RIG_EQUIP",
