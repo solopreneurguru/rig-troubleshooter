@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 
 type Step = { 
   key: string; 
@@ -20,7 +20,10 @@ type Tech = {
 
 export default function SessionWorkspace() {
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const sessionId = params.id as string;
+  const debugSafety = searchParams.get('debug') === 'safety';
+  
   const [actionId, setActionId] = useState<string>("");
   const [step, setStep] = useState<Step | null>(null);
   const [order, setOrder] = useState<number>(1);
@@ -52,7 +55,11 @@ export default function SessionWorkspace() {
       const res = await fetch("/api/plan/next", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, order: 1 }),
+        body: JSON.stringify({ 
+          sessionId, 
+          order: 1,
+          debug: debugSafety ? 'safety' : undefined
+        }),
       });
       const json = await res.json();
       if (json.ok) { 
@@ -65,7 +72,7 @@ export default function SessionWorkspace() {
       }
     };
     init();
-  }, [sessionId]);
+  }, [sessionId, debugSafety]);
 
   async function submit() {
     if (!step) return;
@@ -139,6 +146,11 @@ export default function SessionWorkspace() {
   return (
     <main className="p-6 max-w-2xl space-y-4">
       <h1 className="text-2xl font-bold">Session {sessionId}</h1>
+      {debugSafety && (
+        <div className="rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm">
+          <strong>🔧 Debug Mode:</strong> Showing safety gate step directly
+        </div>
+      )}
       {step ? (
         <div className="rounded-xl border p-4 space-y-2">
           <div className="text-sm opacity-70">Step key: {step.key} • Order {order}</div>
@@ -147,15 +159,15 @@ export default function SessionWorkspace() {
           {step.citation && <p className="text-xs opacity-60"><strong>Why:</strong> {step.citation}</p>}
           
           {step.hazardNote && (
-            <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-sm">
-              <strong>⚠️ Safety Warning:</strong> {step.hazardNote}
+            <div className="rounded-lg border border-amber-400 bg-amber-50 text-amber-900 dark:bg-amber-200 dark:text-amber-900 px-4 py-3">
+              <strong className="font-medium">⚠️ Safety Warning:</strong> {step.hazardNote}
             </div>
           )}
           
           <div className="space-y-2 pt-2">
             <div className="flex gap-2">
               <input 
-                className="flex-1 border rounded p-2" 
+                className="flex-1 border rounded p-2 bg-neutral-900 text-neutral-100 border-neutral-700 placeholder:text-neutral-400" 
                 placeholder="Enter reading/value" 
                 value={value} 
                 onChange={e => setValue(e.target.value)} 
@@ -186,8 +198,8 @@ export default function SessionWorkspace() {
             </div>
             
             {step.requireConfirm && !tech && (
-              <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-sm">
-                <strong>⚠️ Safety Confirmation Required:</strong> You must sign in as a tech to confirm safety for this step.
+              <div className="rounded-lg border border-amber-400 bg-amber-50 text-amber-900 dark:bg-amber-200 dark:text-amber-900 px-4 py-3">
+                <strong className="font-medium">⚠️ Safety Confirmation Required:</strong> Sign in as a technician to proceed.
               </div>
             )}
             
@@ -200,10 +212,10 @@ export default function SessionWorkspace() {
                     checked={safetyConfirmed} 
                     onChange={e => setSafetyConfirmed(e.target.checked)} 
                   />
-                  I have performed LOTO / PPE procedures and confirm it's safe to proceed
+                  I have applied LOTO/PPE and controls are safe
                 </label>
                 <textarea
-                  className="w-full border rounded p-2 text-sm"
+                  className="w-full border rounded p-2 text-sm bg-neutral-900 text-neutral-100 border-neutral-700 placeholder:text-neutral-400"
                   placeholder="Additional safety notes (optional)"
                   rows={2}
                   value={hazardNote}
@@ -243,13 +255,13 @@ export default function SessionWorkspace() {
         <div className="rounded-xl border p-4 space-y-2">
           <h2 className="font-semibold">Create Finding & Report</h2>
           <input 
-            className="w-full border rounded p-2" 
+            className="w-full border rounded p-2 bg-neutral-900 text-neutral-100 border-neutral-700 placeholder:text-neutral-400" 
             placeholder="Finding title" 
             value={fTitle} 
             onChange={e => setFTitle(e.target.value)} 
           />
           <select 
-            className="w-full border rounded p-2" 
+            className="w-full border rounded p-2 bg-neutral-900 text-neutral-100 border-neutral-700" 
             value={fOutcome} 
             onChange={e => setFOutcome(e.target.value)}
           >
@@ -260,14 +272,14 @@ export default function SessionWorkspace() {
             <option>Monitor</option>
           </select>
           <textarea 
-            className="w-full border rounded p-2" 
+            className="w-full border rounded p-2 bg-neutral-900 text-neutral-100 border-neutral-700 placeholder:text-neutral-400" 
             placeholder="Summary" 
             rows={3} 
             value={fSummary} 
             onChange={e => setFSummary(e.target.value)} 
           />
           <textarea 
-            className="w-full border rounded p-2" 
+            className="w-full border rounded p-2 bg-neutral-900 text-neutral-100 border-neutral-700 placeholder:text-neutral-400" 
             placeholder="Parts needed (optional)" 
             rows={3} 
             value={fParts} 
@@ -287,8 +299,8 @@ export default function SessionWorkspace() {
         </div>
       )}
       {status && <p className="text-sm">{status}</p>}
-      <div className="mt-6 rounded-xl border border-yellow-300 bg-yellow-50 p-3 text-sm">
-        <strong>Safety First:</strong> Follow LOTO and OEM procedures. Do not energize/override interlocks unless authorized and safe.
+      <div className="mt-6 rounded-xl border border-amber-400 bg-amber-50 text-amber-900 dark:bg-amber-200 dark:text-amber-900 px-4 py-3">
+        <strong className="font-medium">Safety First:</strong> Follow LOTO and OEM procedures. Do not energize/override interlocks unless authorized and safe.
       </div>
     </main>
   );

@@ -64,7 +64,7 @@ export default function TechDropdown() {
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="px-3 py-2 text-sm border rounded hover:bg-gray-50 flex items-center gap-2"
+        className="px-3 py-1 rounded-md bg-neutral-800 text-neutral-100 hover:bg-neutral-700 shadow-md text-sm flex items-center gap-2"
       >
         {tech ? (
           <>
@@ -83,17 +83,17 @@ export default function TechDropdown() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 bg-white border rounded-lg shadow-lg p-4 z-50">
+        <div className="mt-2 w-64 rounded-md border border-neutral-700 bg-neutral-900 text-neutral-100 shadow-lg p-4 z-50">
           {tech ? (
             <div className="space-y-3">
               <div className="text-sm">
                 <div className="font-medium">Signed in as:</div>
-                <div className="text-gray-600">{tech.name}</div>
-                <div className="text-gray-600">{tech.email}</div>
+                <div className="font-bold">{tech.name}</div>
+                <div className="text-neutral-300">{tech.email}</div>
               </div>
               <button
                 onClick={handleLogout}
-                className="w-full px-3 py-2 text-sm bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100"
+                className="w-full px-3 py-2 text-sm bg-red-600 text-white border border-red-500 rounded hover:bg-red-700"
               >
                 Sign Out
               </button>
@@ -106,19 +106,19 @@ export default function TechDropdown() {
                 placeholder="Name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 text-sm border rounded"
+                className="w-full px-3 py-2 text-sm border border-neutral-700 rounded bg-neutral-800 text-neutral-100 placeholder:text-neutral-400"
               />
               <input
                 type="email"
                 placeholder="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 text-sm border rounded"
+                className="w-full px-3 py-2 text-sm border border-neutral-700 rounded bg-neutral-800 text-neutral-100 placeholder:text-neutral-400"
               />
               <button
                 onClick={handleLogin}
                 disabled={isLoading || !name.trim() || !email.trim()}
-                className="w-full px-3 py-2 text-sm bg-black text-white rounded disabled:opacity-50"
+                className="w-full px-3 py-2 text-sm bg-neutral-700 text-neutral-100 rounded hover:bg-neutral-800 disabled:opacity-50"
               >
                 {isLoading ? "Signing in..." : "Sign In"}
               </button>

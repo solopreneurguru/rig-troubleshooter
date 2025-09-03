@@ -32,8 +32,18 @@ const sampleRulePack = {
       hazardNote: "High pressure - ensure safety valve is operational",
       requireConfirm: true,
       citation: "Doc page 45",
-      passNext: "inspect_gearbox",
+      passNext: "safety_gate",
       failNext: "pressure_fault"
+    },
+    "safety_gate": {
+      key: "safety_gate",
+      type: "safetyGate",
+      instruction: "SAFETY GATE: Confirm LOTO and PPE before proceeding with gearbox inspection",
+      hazardNote: "Gearbox inspection requires physical access. Ensure proper LOTO procedures and PPE are in place.",
+      requireConfirm: true,
+      citation: "Safety manual section 3.1",
+      passNext: "inspect_gearbox",
+      failNext: "done_failure"
     },
     "inspect_gearbox": {
       key: "inspect_gearbox",

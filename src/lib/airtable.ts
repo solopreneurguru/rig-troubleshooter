@@ -107,6 +107,9 @@ export type Step = {
   instruction: string;
   expect?: string;
   citation?: string;
+  unit?: string;
+  hazardNote?: string;
+  requireConfirm?: boolean;
 };
 
 export async function createAction(sessionId: string, order: number, step: Step) {
