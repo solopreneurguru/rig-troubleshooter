@@ -9,6 +9,7 @@ const sessionsTableId = process.env.TB_SESSIONS;
 const actionsTableId = process.env.TB_ACTIONS;
 const readingsTableId = process.env.TB_READINGS;
 const findingsTableId = process.env.TB_FINDINGS;
+const techsTableId = process.env.TB_TECHS;
 
 // Result mapping configuration
 const RESULT_PASS = (process.env.AT_RESULT_PASS_OPTION || "Pass").trim();
@@ -126,6 +127,49 @@ export async function updateActionResult(actionId: string, result: "pass"|"fail"
   const tbl = table(actionsTableId);
   const val = result === "pass" ? RESULT_PASS : RESULT_FAIL;
   await tbl.update([{ id: actionId, fields: { Result: val } as any }]);
+}
+
+// ---------- Techs ----------
+export async function createOrGetTechByEmail(name: string, email: string) {
+  if (!techsTableId) throw new Error("Techs table not configured");
+  const tbl = table(techsTableId);
+  
+  // Try to find existing tech by email
+  const records = await tbl.select({ 
+    filterByFormula: `{Email} = '${email}'`,
+    maxRecords: 1 
+  }).firstPage();
+  
+  if (records.length > 0) {
+    const tech = records[0];
+    return { id: tech.id, ...(tech.fields as any) };
+  }
+  
+  // Create new tech
+  const recs = await tbl.create([{ 
+    fields: { Name: name, Email: email } as any 
+  }]);
+  return { id: recs[0].id, ...(recs[0].fields as any) };
+}
+
+export async function getTechById(id: string) {
+  if (!techsTableId) throw new Error("Techs table not configured");
+  const rec = await table(techsTableId).find(id);
+  return { id: rec.id, ...(rec.fields as any) };
+}
+
+export async function updateActionHazardConfirm(actionId: string, data: {
+  confirmedById: string;
+  confirmedAt: string;
+  hazardNote?: string;
+}) {
+  const tbl = table(actionsTableId);
+  const fields: any = {
+    ConfirmedBy: data.confirmedById,
+    ConfirmedAt: data.confirmedAt,
+  };
+  if (data.hazardNote) fields.HazardNote = data.hazardNote;
+  await tbl.update([{ id: actionId, fields }]);
 }
 
 export async function createReading(actionId: string, value: string, unit?: string, passFail?: "pass"|"fail") {

@@ -12,6 +12,12 @@ type Step = {
   requireConfirm?: boolean;
 };
 
+type Tech = {
+  id: string;
+  name: string;
+  email: string;
+};
+
 export default function SessionWorkspace() {
   const params = useParams<{ id: string }>();
   const sessionId = params.id as string;
@@ -22,6 +28,8 @@ export default function SessionWorkspace() {
   const [pass, setPass] = useState<boolean>(true);
   const [status, setStatus] = useState<string>("");
   const [safetyConfirmed, setSafetyConfirmed] = useState<boolean>(false);
+  const [hazardNote, setHazardNote] = useState<string>("");
+  const [tech, setTech] = useState<Tech | null>(null);
   const [fTitle, setFTitle] = useState("");
   const [fOutcome, setFOutcome] = useState("Resolved");
   const [fSummary, setFSummary] = useState("");
@@ -29,6 +37,16 @@ export default function SessionWorkspace() {
   const [reportURL, setReportURL] = useState("");
 
   useEffect(() => {
+    // Load tech from localStorage
+    const savedTech = localStorage.getItem("tech");
+    if (savedTech) {
+      try {
+        setTech(JSON.parse(savedTech));
+      } catch (e) {
+        localStorage.removeItem("tech");
+      }
+    }
+
     const init = async () => {
       setStatus("Fetching first step...");
       const res = await fetch("/api/plan/next", {
@@ -69,12 +87,36 @@ export default function SessionWorkspace() {
       setValue("");
       setPass(true);
       setSafetyConfirmed(false);
+      setHazardNote("");
       setStatus("");
     } else if (json.ok && json.done) {
       setStatus("Plan complete. You can close the session or escalate.");
       setStep(null);
     } else {
       setStatus(json.error || "Submit failed");
+    }
+  }
+
+  async function confirmHazard() {
+    if (!tech || !actionId) return;
+    
+    setStatus("Confirming safety...");
+    try {
+      const res = await fetch("/api/actions/confirm-hazard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actionId, hazardNote, techId: tech.id }),
+      });
+      
+      const json = await res.json();
+      if (json.ok) {
+        setSafetyConfirmed(true);
+        setStatus("Safety confirmed. You can now proceed.");
+      } else {
+        setStatus("Confirmation failed: " + json.error);
+      }
+    } catch (e) {
+      setStatus("Confirmation failed: " + e);
     }
   }
 
@@ -143,15 +185,44 @@ export default function SessionWorkspace() {
               </label>
             </div>
             
-            {step.requireConfirm && (
-              <label className="flex items-center gap-2 text-sm">
-                <input 
-                  type="checkbox" 
-                  checked={safetyConfirmed} 
-                  onChange={e => setSafetyConfirmed(e.target.checked)} 
+            {step.requireConfirm && !tech && (
+              <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-sm">
+                <strong>⚠️ Safety Confirmation Required:</strong> You must sign in as a tech to confirm safety for this step.
+              </div>
+            )}
+            
+            {step.requireConfirm && tech && !safetyConfirmed && (
+              <div className="space-y-3 p-3 border border-blue-200 bg-blue-50 rounded-lg">
+                <div className="text-sm font-medium">Safety Confirmation Required</div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input 
+                    type="checkbox" 
+                    checked={safetyConfirmed} 
+                    onChange={e => setSafetyConfirmed(e.target.checked)} 
+                  />
+                  I have performed LOTO / PPE procedures and confirm it's safe to proceed
+                </label>
+                <textarea
+                  className="w-full border rounded p-2 text-sm"
+                  placeholder="Additional safety notes (optional)"
+                  rows={2}
+                  value={hazardNote}
+                  onChange={e => setHazardNote(e.target.value)}
                 />
-                I confirm it's safe to proceed
-              </label>
+                <button
+                  onClick={confirmHazard}
+                  disabled={!safetyConfirmed}
+                  className="px-3 py-2 text-sm bg-blue-600 text-white rounded disabled:opacity-50"
+                >
+                  Confirm Safety
+                </button>
+              </div>
+            )}
+            
+            {step.requireConfirm && tech && safetyConfirmed && (
+              <div className="rounded-lg border border-green-300 bg-green-50 p-3 text-sm">
+                <strong>✅ Safety Confirmed:</strong> {tech.name} has confirmed safety procedures.
+              </div>
             )}
             
             <button 
@@ -159,7 +230,7 @@ export default function SessionWorkspace() {
               disabled={step.requireConfirm && !safetyConfirmed}
               className="px-4 py-2 rounded bg-black text-white disabled:opacity-50"
             >
-              Submit
+              Continue
             </button>
           </div>
         </div>
