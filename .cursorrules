@@ -7,3 +7,13 @@ Planner: Rule + LLM hybrid. Use a deterministic JSON DSL for permissives/interlo
 MVP routes/pages: /, /rigs, /rigs/[id], /sessions/new, /sessions/[id], /upload; APIs: /api/env, /api/blob/upload, /api/documents/create, /api/plan/next, /api/report/[sessionId]. Use Airtable for metadata; Vercel Blob for binaries. Generate PDF reports with steps/readings/findings; email on new Session/Finding.
 
 Self-checks each change: plan files & risks; run typecheck & build; print change log; verify /api/env envs; exercise all routes; keep route handler signatures; ensure every step has citations. Follow a11y (tap targets ≥44px, visible focus), mobile-first, and no secrets in code.
+
+# === Docs Autoupdate Trigger ===
+When the user types exactly the word "bigbadwolf" in chat:
+1) Run: `npm run docs:update`
+2) Show the git diff limited to docs-only: `git diff -- docs README.md CHANGELOG.md`
+3) Ask: "Commit docs update?" If yes, run:
+   - `git add docs README.md CHANGELOG.md`
+   - `git commit -m "docs: auto-update (ENV + API maps)"`
+   - `git push`
+4) Never modify non-doc files as part of this flow. If any non-doc file changed, abort and show those paths.

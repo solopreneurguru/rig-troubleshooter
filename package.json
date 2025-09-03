@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
-    "start": "next start"
+    "start": "next start",
+    "docs:update": "node scripts/docs-update.mjs",
+    "docs:check": "node scripts/docs-update.mjs --check"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.3.0",

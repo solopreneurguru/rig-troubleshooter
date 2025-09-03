@@ -1,0 +1,4 @@
+* text=auto 
+*.{js,ts,tsx,jsx,mjs,cjs,json,md,markdown,css,scss,html,yaml,yml} text eol=lf 
+*.{sh,bash} text eol=lf 
+*.env text eol=lf 
