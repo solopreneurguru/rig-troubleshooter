@@ -1,0 +1,27 @@
+# Global owners
+* @solopreneurguru
+
+# API Routes
+/api/ @solopreneurguru
+
+# Core Library Files
+/src/lib/ @solopreneurguru
+
+# Components
+/src/components/ @solopreneurguru
+
+# Pages
+/src/app/ @solopreneurguru
+
+# Configuration Files
+package.json @solopreneurguru
+next.config.js @solopreneurguru
+tailwind.config.js @solopreneurguru
+tsconfig.json @solopreneurguru
+
+# Documentation
+README.md @solopreneurguru
+*.md @solopreneurguru
+
+# GitHub Templates
+.github/ @solopreneurguru
