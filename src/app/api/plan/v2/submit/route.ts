@@ -10,18 +10,18 @@ export async function POST(req: Request) {
       nodeKey: string;
       payload: { value?: number; unit?: string; pass?: boolean; confirm?: boolean; techId?: string; };
     };
-    if (!sessionId || !nodeKey) return NextResponse.json({ error: "sessionId and nodeKey required" }, { status: 400 });
+    if (!sessionId || !nodeKey) return NextResponse.json({ ok: false, error: "sessionId and nodeKey required" }, { status: 400 });
 
     const s = await getSessionById(sessionId);
     const key = s?.fields?.RulePackKey as string;
     const pack: RulePackV2 = await getRulePackByKey(key);
 
     const node = pack?.nodes?.[nodeKey];
-    if (!node) return NextResponse.json({ error: "node not found" }, { status: 404 });
+    if (!node) return NextResponse.json({ ok: false, error: "node not found" }, { status: 404 });
 
     // safety
     if (node.type === "safetyGate" && !payload?.confirm) {
-      return NextResponse.json({ error: "confirmation required" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "confirmation required" }, { status: 400 });
     }
 
     // write action + reading

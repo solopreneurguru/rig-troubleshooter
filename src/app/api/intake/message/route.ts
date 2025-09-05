@@ -5,7 +5,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { sessionId, text } = body as { sessionId: string; text: string };
-    if (!sessionId || !text) return NextResponse.json({ error: "sessionId and text required" }, { status: 400 });
+    if (!sessionId || !text) return NextResponse.json({ ok: false, error: "sessionId and text required" }, { status: 400 });
 
     const { equipment, failureMode, disambiguation, packKeyCandidate } = classify(text);
 
