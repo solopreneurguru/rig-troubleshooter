@@ -1,44 +1,50 @@
 import { NextResponse } from "next/server";
-import { createActionAndReading, getRulePackByKey, getSessionById } from "@/lib/airtable";
-import { nodePassFail, RulePackV2 } from "@/lib/rpv2";
+import { getRulePackKeyForSession, appendAction } from "@/lib/airtable";
+import { loadV2PackByKey, evaluateMeasure } from "@/lib/plan_v2";
+
+// Optional: if you have addReading helper, import it; else leave commented.
+// import { addReading } from "@/lib/airtable";
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { sessionId, nodeKey, payload } = body as {
-      sessionId: string;
-      nodeKey: string;
-      payload: { value?: number; unit?: string; pass?: boolean; confirm?: boolean; techId?: string; };
-    };
-    if (!sessionId || !nodeKey) return NextResponse.json({ ok: false, error: "sessionId and nodeKey required" }, { status: 400 });
-
-    const s = await getSessionById(sessionId);
-    const key = s?.fields?.RulePackKey as string;
-    const pack: RulePackV2 = await getRulePackByKey(key);
-
-    const node = pack?.nodes?.[nodeKey];
-    if (!node) return NextResponse.json({ ok: false, error: "node not found" }, { status: 404 });
-
-    // safety
-    if (node.type === "safetyGate" && !payload?.confirm) {
-      return NextResponse.json({ ok: false, error: "confirmation required" }, { status: 400 });
+    const { sessionId, stepId, kind, value } = body || {};
+    if (!sessionId || !stepId || !kind) {
+      return NextResponse.json({ ok:false, error:"missing params" }, { status:400 });
     }
 
-    // write action + reading
-    const { actionId, readingId } = await createActionAndReading({
-      sessionId,
-      stepKey: nodeKey,
-      instruction: node.instruction,
-      expected: node.expect != null ? `${node.expect}±${node.tolerance ?? 0} ${node.unit ?? ""}` : (node.min != null ? `min ${node.min}${node.unit ?? ""}` : ""),
-      citation: node.citation ?? "",
-      unit: payload?.unit ?? node.unit ?? "",
-      value: (typeof payload?.value === "number" ? payload?.value : undefined),
-      passFail: nodePassFail(node, payload?.value, payload?.pass) ? "Pass" : "Fail",
-      confirm: payload?.confirm === true ? { techId: payload.techId ?? null } : null
-    });
+    const packKey = await getRulePackKeyForSession(sessionId);
+    if (!packKey || !packKey.endsWith(".v2")) {
+      return NextResponse.json({ ok:false, error:"not a v2 session" }, { status:400 });
+    }
+    const pack = await loadV2PackByKey(packKey);
+    const step = pack?.steps?.[stepId];
+    if (!step) return NextResponse.json({ ok:false, error:"step not found" }, { status:404 });
 
-    return NextResponse.json({ ok: true, actionId, readingId });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "unknown" }, { status: 500 });
+    let actionOk: boolean | undefined = undefined;
+    let actionValue: any = value;
+
+    if (step.type === "safetyGate") {
+      const confirmed = !!(value?.confirmed || value === true);
+      if (!confirmed && step.requireConfirm !== false) {
+        return NextResponse.json({ ok:false, error:"safety not confirmed" }, { status:400 });
+      }
+      actionValue = { confirmed: confirmed === true };
+    }
+
+    if (step.type === "measure") {
+      const numeric = Number(value);
+      if (Number.isNaN(numeric)) {
+        return NextResponse.json({ ok:false, error:"measure requires numeric value" }, { status:400 });
+      }
+      actionOk = evaluateMeasure(step as any, numeric);
+      // Optionally persist to Readings if you have a helper; otherwise only Actions.
+      // try { await addReading(sessionId, stepId, numeric, step.unit, actionOk); } catch {}
+    }
+
+    await appendAction(sessionId, { stepId, kind, value: actionValue, ok: actionOk });
+    return NextResponse.json({ ok:true });
+  } catch (err:any) {
+    return NextResponse.json({ ok:false, error:String(err?.message||err) }, { status:500 });
   }
 }

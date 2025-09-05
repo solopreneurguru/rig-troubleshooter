@@ -717,3 +717,80 @@ export async function setActionResult(actionId: string, result: "Pass" | "Fail")
   const tbl = table(actionsTableId);
   await tbl.update([{ id: actionId, fields: { Result: result } as any }]);
 }
+
+// ---------- New Helper Functions for v2 Auto-Selection ----------
+const SESS_EQUIP = process.env.SESSIONS_EQUIPMENT_FIELD || "Equipment";
+const SESS_PACK  = process.env.SESSIONS_RULEPACK_FIELD || "RulePackKey";
+const EQUIP_TYPE = process.env.EQUIPINSTANCES_TYPE_FIELD || "Type";
+
+// Avoid computed fields
+const BLOCK = new Set(["Title", "CreatedAt", "Attachments"]);
+
+
+export async function listRulePacks() {
+  const rulePacksTableId = process.env.TB_RULEPACKS;
+  if (!rulePacksTableId) throw new Error("RulePacks table not configured");
+  
+  const tbl = table(rulePacksTableId);
+  const rows = await tbl.select().all();
+  return rows
+    .filter((r: any) => r?.fields?.Active)
+    .map((r: any) => {
+      const f = r.fields || {};
+      const key = (f.Key || "").toString().trim();
+      let json: any = null;
+      try { json = f.Json ? JSON.parse(f.Json) : null; } catch {}
+      const et =
+        (Array.isArray(f.EquipmentType) && f.EquipmentType[0]) ||
+        (Array.isArray(f.EquipmentTypeLink) && f.EquipmentTypeLink[0]) || null;
+      const equipmentTypeName = et && typeof et === "object" ? et.name : et;
+      return { id: r.id, key, json, equipmentTypeName };
+    });
+}
+
+// --- PACK GUARDRAILS ---
+export async function getRulePackByKeySafe(key: string) {
+  if (!key) return null;
+  const rulePacksTableId = process.env.TB_RULEPACKS;
+  if (!rulePacksTableId) throw new Error("RulePacks table not configured");
+  const tbl = table(rulePacksTableId);
+  const formula = `AND({Active}=TRUE(), LOWER({Key})=LOWER("${key}"))`;
+  const res = await tbl.select({ filterByFormula: formula, maxRecords: 1 }).firstPage();
+  return res?.[0] ? normalize(res[0]) : null;
+}
+
+export async function rulePackExists(key: string): Promise<boolean> {
+  return !!(await getRulePackByKeySafe(key));
+}
+
+function normalize(record: any) {
+  return { id: record.id, ...(record.fields as any) };
+}
+
+// --- V2 STEP RUNNER HELPERS ---
+export async function getRulePackKeyForSession(id: string): Promise<string | null> {
+  const s = await getSessionById(id);
+  const key = s?.RulePackKey || s?.rulePackKey || null;
+  return key ?? null;
+}
+
+export async function listActionsForSession(sessionId: string): Promise<Array<any>> {
+  const tbl = table(actionsTableId);
+  const records = await tbl.select({ 
+    filterByFormula: `{Session} = "${sessionId}"`, 
+    sort: [{field: "CreatedAt", direction: "asc"}]
+  }).all();
+  return (records || []).map(normalize);
+}
+
+export async function appendAction(sessionId: string, a: { stepId: string; kind: string; value?: any; ok?: boolean }) {
+  const tbl = table(actionsTableId);
+  const fields: Record<string, any> = {
+    Session: [sessionId],
+    StepId: a.stepId,
+    Kind: a.kind,
+  };
+  if (a.value !== undefined) fields.Value = typeof a.value === "string" ? a.value : JSON.stringify(a.value);
+  if (a.ok !== undefined) fields.Ok = a.ok; // add if your Actions table has a boolean "Ok" field; otherwise omit.
+  await tbl.create([{ fields }]);
+}

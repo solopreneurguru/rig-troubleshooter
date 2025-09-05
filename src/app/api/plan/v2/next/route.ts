@@ -1,33 +1,37 @@
 import { NextResponse } from "next/server";
-import { getSessionById, getRulePackByKey, getLastActionForSession } from "@/lib/airtable";
-import type { RulePackV2 } from "@/lib/rpv2";
+import { getSessionById, listActionsForSession, getRulePackKeyForSession } from "@/lib/airtable";
+import { loadV2PackByKey, nextStepId } from "@/lib/plan_v2";
 
-export async function POST(req: Request) {
+// NOTE: reuse existing airtable helpers if names differ; otherwise add thin wrappers in airtable.ts:
+//   - getSessionById(id)
+//   - getRulePackKeyForSession(id): returns string | null (from Sessions.RulePackKey)
+//   - listActionsForSession(id): returns array ordered by CreatedAt with minimally { stepId, kind, value }
+
+export async function GET(req: Request) {
   try {
-    const { sessionId } = await req.json();
-    if (!sessionId) return NextResponse.json({ error: "sessionId required" }, { status: 400 });
+    const { searchParams } = new URL(req.url);
+    const sessionId = searchParams.get("sessionId");
+    if (!sessionId) return NextResponse.json({ ok:false, error:"missing sessionId" }, { status:400 });
 
     const session = await getSessionById(sessionId);
-    const key = session?.fields?.RulePackKey as string | undefined;
-    if (!key || !key.endsWith(".v2")) return NextResponse.json({ error: "not a v2 session" }, { status: 400 });
+    if (!session) return NextResponse.json({ ok:false, error:"session not found" }, { status:404 });
 
-    const pack: RulePackV2 = await getRulePackByKey(key);
-    if (!pack) return NextResponse.json({ error: "pack not found" }, { status: 404 });
-
-    // decide next node: if no actions yet -> start; else based on last action result.pass/fail
-    const last = await getLastActionForSession(sessionId);
-    let nodeKey = pack.start;
-    if (last) {
-      const lastNodeKey = last.fields.StepKey as string;
-      const lastResult = last.fields.Result as "Pass" | "Fail" | "Pending" | undefined;
-      const n = pack.nodes[lastNodeKey];
-      if (n && lastResult) {
-        nodeKey = (lastResult === "Pass" ? n.passNext : n.failNext) || "done";
-      }
+    const packKey = await getRulePackKeyForSession(sessionId);
+    if (!packKey || !packKey.endsWith(".v2")) {
+      return NextResponse.json({ ok:false, error:"not a v2 session" }, { status:400 });
     }
-    const node = pack.nodes[nodeKey] ?? { type: "done", instruction: "Complete." };
-    return NextResponse.json({ ok: true, nodeKey, node, packKey: pack.key });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "unknown" }, { status: 500 });
+
+    const pack = await loadV2PackByKey(packKey);
+    if (!pack) return NextResponse.json({ ok:false, error:"rule pack not found or invalid json" }, { status:404 });
+
+    const actions = await listActionsForSession(sessionId);
+    const stepId = nextStepId(pack, actions || []);
+    if (!stepId) {
+      return NextResponse.json({ ok:true, done:true, step:null });
+    }
+    const step = pack.steps[stepId];
+    return NextResponse.json({ ok:true, done:false, step });
+  } catch (err:any) {
+    return NextResponse.json({ ok:false, error:String(err?.message||err) }, { status:500 });
   }
 }

@@ -51,9 +51,8 @@ export default function SessionWorkspace() {
   const [rulePackKey, setRulePackKey] = useState<string>("");
   
   // Rule pack selection state
-  const [availablePacks, setAvailablePacks] = useState<any[]>([]);
-  const [selectedPackKey, setSelectedPackKey] = useState<string>("");
-  const [updatingPack, setUpdatingPack] = useState<boolean>(false);
+  const [packs, setPacks] = useState<Array<{key:string; isV2:boolean; equipmentTypeName?:string}>>([]);
+  const [pendingPack, setPendingPack] = useState<string>("");
   
   // Right rail state
   const [rr, setRR] = useState<{signals:any[]; testpoints:any[]; similar:any[]}>({signals:[],testpoints:[],similar:[]});
@@ -93,16 +92,18 @@ export default function SessionWorkspace() {
         setIsV2(true);
         setStatus("Loading v2 step...");
         
-        const res = await fetch("/api/plan/v2/next", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId }),
-        });
+        const res = await fetch(`/api/plan/v2/next?sessionId=${sessionId}`);
         const json = await res.json();
         if (json.ok) {
-          setV2NodeKey(json.nodeKey);
-          setV2Node(json.node);
-          setStatus("");
+          if (json.done) {
+            setV2NodeKey("");
+            setV2Node(null);
+            setStatus("Plan complete.");
+          } else {
+            setV2NodeKey(json.step.id);
+            setV2Node(json.step);
+            setStatus("");
+          }
         } else {
           setStatus(json.error || "Failed to fetch v2 step");
         }
@@ -132,25 +133,20 @@ export default function SessionWorkspace() {
         // No rule pack set - show selection control
         setIsV2(false);
         setStatus("No rule pack selected. Please select one below.");
-        
-        // Load available packs for the equipment type
-        const equipmentType = sessionData?.session?.EquipmentInstance?.[0];
-        if (equipmentType) {
-          try {
-            const packsRes = await fetch(`/api/rulepacks/list?type=${encodeURIComponent(equipmentType)}`);
-            const packsData = await packsRes.json();
-            if (packsData.ok) {
-              const v2Packs = packsData.packs.filter((pack: any) => pack.key?.endsWith('.v2'));
-              setAvailablePacks(v2Packs);
-            }
-          } catch (e) {
-            console.log("Failed to load packs for equipment type:", e);
-          }
-        }
       }
     };
     init();
   }, [sessionId, debugSafety]);
+
+  // Load v2 packs when RulePackKey is missing
+  useEffect(() => {
+    if (!rulePackKey) {
+      fetch("/api/rulepacks/list", { cache: "no-store" })
+        .then(r => r.json())
+        .then(d => { if (d?.ok) setPacks(d.items || []); })
+        .catch(() => setPacks([]));
+    }
+  }, [rulePackKey]);
 
   // Load right-rail data
   useEffect(() => {
@@ -272,33 +268,16 @@ export default function SessionWorkspace() {
     }
   }
 
-  async function handleRulePackSelection() {
-    if (!selectedPackKey) return;
-    
-    setUpdatingPack(true);
-    try {
-      const res = await fetch("/api/sessions/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          sessionId, 
-          RulePackKey: selectedPackKey
-        })
-      });
-      
-      const json = await res.json();
-      if (json.ok) {
-        setRulePackKey(selectedPackKey);
-        // Reload the page state
-        window.location.reload();
-      } else {
-        alert(`Failed to set rule pack: ${json.error || 'Unknown error'}`);
-      }
-    } catch (e) {
-      alert("Failed to set rule pack: " + e);
-    } finally {
-      setUpdatingPack(false);
-    }
+  async function attachPack() {
+    if (!pendingPack || !sessionId) return;
+    const r = await fetch("/api/sessions/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: sessionId, patch: { RulePackKey: pendingPack } })
+    });
+    const j = await r.json();
+    if (j?.ok) location.reload();
+    else alert(j?.error || "Failed to attach pack");
   }
 
   return (
@@ -306,36 +285,25 @@ export default function SessionWorkspace() {
       <div className="col-span-8 space-y-4">
         <h1 className="text-2xl font-bold">Session {sessionId}</h1>
         
-        {/* Rule Pack Selection Control */}
+        {/* Inline v2 pack picker */}
         {!rulePackKey && (
-          <div className="rounded-lg border border-orange-400 bg-orange-50 text-orange-900 dark:bg-orange-200 dark:text-orange-900 px-4 py-3">
-            <div className="space-y-3">
-              <strong className="font-medium">⚠️ Select Rule Pack (.v2)</strong>
-              {availablePacks.length > 0 ? (
-                <div className="flex gap-2">
-                  <select
-                    className="flex-1 border border-orange-300 rounded px-3 py-2 bg-white text-orange-900"
-                    value={selectedPackKey}
-                    onChange={e => setSelectedPackKey(e.target.value)}
-                  >
-                    <option value="">Choose a rule pack...</option>
-                    {availablePacks.map((pack: any) => (
-                      <option key={pack.id} value={pack.key}>{pack.key}</option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={handleRulePackSelection}
-                    disabled={!selectedPackKey || updatingPack}
-                    className="px-4 py-2 bg-orange-600 text-white rounded disabled:opacity-50"
-                  >
-                    {updatingPack ? "Setting..." : "Set Pack"}
-                  </button>
-                </div>
-              ) : (
-                <div className="text-sm">
-                  No rule packs available for this equipment type. Please contact support.
-                </div>
-              )}
+          <div className="mb-4 rounded-md border border-yellow-700 bg-yellow-900/30 p-3 text-yellow-100">
+            <div className="font-semibold">Select Rule Pack (.v2)</div>
+            <div className="text-sm opacity-80 mb-2">No rule pack selected. Pick a v2 pack below.</div>
+            <div className="flex gap-2 items-center">
+              <select
+                className="min-w-[360px] rounded border border-zinc-600 bg-zinc-900 px-2 py-1"
+                value={pendingPack}
+                onChange={e => setPendingPack(e.target.value)}
+              >
+                <option value="">— choose a v2 pack —</option>
+                {packs.filter(p => p.isV2).map(p => (
+                  <option key={p.key} value={p.key}>{p.key}</option>
+                ))}
+              </select>
+              <button className="rounded bg-blue-600 hover:bg-blue-500 px-3 py-1 text-white" onClick={attachPack}>
+                Attach
+              </button>
             </div>
           </div>
         )}
