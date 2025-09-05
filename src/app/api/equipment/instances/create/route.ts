@@ -22,6 +22,9 @@ export async function POST(req: Request) {
       Notes
     });
     
+    // Log field names for debugging
+    console.log("Equip create fields:", Object.keys({ Name, SerialNumber, EquipmentType, Rig, PLCProjectDoc, Status, Notes }));
+    
     return NextResponse.json({ ok: true, equipmentId: id }, { status: 201 });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message ?? "unknown" }, { status: 500 });

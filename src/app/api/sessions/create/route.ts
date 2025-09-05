@@ -32,8 +32,8 @@ export async function POST(req: Request) {
       // DO NOT include Title - it's computed by Airtable formula
     });
     
-    // TEMP debug log (remove later)
-    console.log("create fields:", Object.keys(fields));
+    // Log field names for debugging
+    console.log("Session create fields:", Object.keys(fields));
     
     // Ensure "Title" never appears in the fields
     if ("Title" in fields) {

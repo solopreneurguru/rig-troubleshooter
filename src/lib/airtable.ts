@@ -25,6 +25,10 @@ const RESULT_FAIL = (process.env.AT_RESULT_FAIL_OPTION || "Fail").trim();
 const READING_PASS = (process.env.AT_READING_PASS_OPTION || RESULT_PASS).trim();
 const READING_FAIL = (process.env.AT_READING_FAIL_OPTION || RESULT_FAIL).trim();
 
+// Field name configuration
+const SESS_EQUIP_FIELD = process.env.SESSIONS_EQUIPMENT_FIELD || "EquipmentInstance";
+const EQI_TYPE_FIELD = process.env.EQUIPINSTANCES_TYPE_FIELD || "Type";
+
 if (!apiKey || !baseId) {
   console.warn("[airtable] Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID");
 }
@@ -118,7 +122,7 @@ export async function createSession(
   // Build explicit whitelist object and sanitize
   const fields = sanitizeFields({
     Rig: rigId ? [rigId] : undefined,
-    EquipmentInstance: equipmentInstanceId ? [equipmentInstanceId] : undefined,
+    [SESS_EQUIP_FIELD]: equipmentInstanceId ? [equipmentInstanceId] : undefined,
     Problem: problem || undefined,
     Status: "Open",
     FailureMode: failureMode || undefined,
@@ -434,12 +438,37 @@ export async function createEquipmentInstance(fields: {
   const tbl = table(equipmentInstancesTableId);
   const payload: any = { Name: fields.Name };
   if (fields.SerialNumber) payload.SerialNumber = fields.SerialNumber;
-  if (fields.EquipmentType) payload.EquipmentType = fields.EquipmentType;
+  if (fields.EquipmentType) payload[EQI_TYPE_FIELD] = fields.EquipmentType;
   if (fields.Rig) payload.Rig = fields.Rig;
   if (fields.PLCProjectDoc) payload.PLCProjectDoc = fields.PLCProjectDoc;
   if (fields.Status) payload.Status = fields.Status;
   if (fields.Notes) payload.Notes = fields.Notes;
   const recs = await tbl.create([{ fields: payload }]);
+  return recs[0].id;
+}
+
+// New helper function with env-driven field names as requested
+export async function createEquipmentInstanceV2(fields: {
+  name: string;
+  typeId?: string;
+  rigId?: string;
+  serial?: string;
+  plcDocId?: string;
+  variantNotes?: string;
+  commissionedAt?: string;
+}): Promise<string> {
+  if (!equipmentInstancesTableId) throw new Error("Equipment Instances table not configured");
+  const tbl = table(equipmentInstancesTableId);
+  const fieldsToSend = sanitizeFields({
+    Name: fields.name,
+    [EQI_TYPE_FIELD]: fields.typeId ? [fields.typeId] : undefined,
+    Rig: fields.rigId ? [fields.rigId] : undefined,
+    Serial: fields.serial || undefined,
+    PLCProject: fields.plcDocId ? [fields.plcDocId] : undefined,
+    VariantNotes: fields.variantNotes || undefined,
+    CommissionedAt: fields.commissionedAt || undefined,
+  });
+  const recs = await tbl.create([{ fields: fieldsToSend }]);
   return recs[0].id;
 }
 
@@ -516,7 +545,7 @@ export function envStatus() {
     "AIRTABLE_API_KEY","AIRTABLE_BASE_ID","TB_RIGS","TB_EQUIP_TYPES","TB_RIG_EQUIP",
     "TB_DOCS","TB_SESSIONS","TB_ACTIONS","TB_READINGS","TB_FINDINGS","TB_TECHS","TB_RULEPACKS",
     "TB_EQUIPMENT_TYPES","TB_EQUIPMENT_INSTANCES","TB_COMPONENTS","TB_SIGNALS","TB_TESTPOINTS","TB_PARTS",
-    "SESSIONS_RULEPACK_FIELD","BLOB_READ_WRITE_TOKEN",
+    "SESSIONS_RULEPACK_FIELD","SESSIONS_EQUIPMENT_FIELD","EQUIPINSTANCES_TYPE_FIELD","BLOB_READ_WRITE_TOKEN",
   ] as const;
   return Object.fromEntries(keys.map((k) => [k, process.env[k] ? "✓ set" : "✗ missing"]));
 }
