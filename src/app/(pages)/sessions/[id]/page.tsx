@@ -28,6 +28,13 @@ export default function SessionWorkspace() {
   const sessionId = params.id as string;
   const debugSafety = searchParams.get('debug') === 'safety';
   
+  // Redirect if sessionId is undefined
+  useEffect(() => {
+    if (!sessionId || sessionId === 'undefined') {
+      router.push('/sessions/new');
+    }
+  }, [sessionId, router]);
+  
   const [actionId, setActionId] = useState<string>("");
   const [step, setStep] = useState<Step | null>(null);
   const [order, setOrder] = useState<number>(1);
@@ -290,21 +297,30 @@ export default function SessionWorkspace() {
           <div className="mb-4 rounded-md border border-yellow-700 bg-yellow-900/30 p-3 text-yellow-100">
             <div className="font-semibold">Select Rule Pack (.v2)</div>
             <div className="text-sm opacity-80 mb-2">No rule pack selected. Pick a v2 pack below.</div>
-            <div className="flex gap-2 items-center">
-              <select
-                className="min-w-[360px] rounded border border-zinc-600 bg-zinc-900 px-2 py-1"
-                value={pendingPack}
-                onChange={e => setPendingPack(e.target.value)}
-              >
-                <option value="">— choose a v2 pack —</option>
-                {packs.filter(p => p.isV2).map(p => (
-                  <option key={p.key} value={p.key}>{p.key}</option>
-                ))}
-              </select>
-              <button className="rounded bg-blue-600 hover:bg-blue-500 px-3 py-1 text-white" onClick={attachPack}>
-                Attach
-              </button>
-            </div>
+            {!packs || packs.filter(p => p.isV2).length === 0 ? (
+              <div className="text-sm opacity-80">
+                No v2 packs found.
+                <div className="mt-1">
+                  <code className="rounded bg-black/20 px-2 py-1">/admin/dev</code> → "Seed v2-pack-plus", then refresh this page.
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2 items-center">
+                <select
+                  className="min-w-[360px] rounded border border-zinc-600 bg-zinc-900 px-2 py-1"
+                  value={pendingPack}
+                  onChange={e => setPendingPack(e.target.value)}
+                >
+                  <option value="">— choose a v2 pack —</option>
+                  {packs.filter(p => p.isV2).map(p => (
+                    <option key={p.key} value={p.key}>{p.key}</option>
+                  ))}
+                </select>
+                <button className="rounded bg-blue-600 hover:bg-blue-500 px-3 py-1 text-white" onClick={attachPack}>
+                  Attach
+                </button>
+              </div>
+            )}
           </div>
         )}
         
