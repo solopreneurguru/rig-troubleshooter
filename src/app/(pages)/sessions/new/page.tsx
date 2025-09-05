@@ -90,7 +90,7 @@ export default function NewSessionPage() {
           const j = await r.json();
           if (j.ok) {
             // Only show .v2 packs
-            const v2Packs = j.packs.filter((pack: any) => pack.Key?.endsWith('.v2'));
+            const v2Packs = j.packs.filter((pack: any) => pack.key?.endsWith('.v2'));
             setPacks(v2Packs);
           }
         } catch (e) {
@@ -115,7 +115,6 @@ export default function NewSessionPage() {
         body: JSON.stringify({ 
           rigName: selectedRig?.Name || rigName, 
           problem, 
-          rulePackKey: rpKey,
           equipmentInstanceId: selectedEquipmentInstance?.id
         }),
       });
@@ -129,13 +128,15 @@ export default function NewSessionPage() {
       
       const sessionId = json.sessionId;
       
-      // Update session with the selected pack
+      // Update session with the selected pack key only
       const updRes = await fetch("/api/sessions/update", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ sessionId, fields: {
-          RulePackKey: rpKey
-        }})
+        body: JSON.stringify({ 
+          sessionId, 
+          RulePackKey: rpKey,
+          FailureMode: undefined // Don't send failure mode for manual selection
+        })
       });
       const upd = await updRes.json().catch(() => null);
       
@@ -145,7 +146,10 @@ export default function NewSessionPage() {
         return;
       }
 
-      // Navigate to session
+      // Keep the selected key in local state and enable "Create Session"
+      setRpKey(rpKey);
+      
+      // Navigate to session only after confirming the session write succeeded
       router.push(`/sessions/${sessionId}`);
     } catch (e) {
       alert("Failed to create session: " + e);
@@ -209,10 +213,11 @@ export default function NewSessionPage() {
       const updRes = await fetch("/api/sessions/update", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ sessionId, fields: {
+        body: JSON.stringify({ 
+          sessionId, 
           RulePackKey: intake.packKey,
           FailureMode: intake.failureMode ?? undefined
-        }})
+        })
       });
       const upd = await updRes.json().catch(() => null);
       
@@ -365,8 +370,8 @@ export default function NewSessionPage() {
             ) : (
               <select className="bg-zinc-900 text-zinc-100 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md px-3 py-2 w-full" value={rpKey} onChange={e=>setRpKey(e.target.value)}>
                 <option value="">Auto-select from problem description</option>
-                {packs.filter((p:any) => p.Key?.endsWith('.v2')).map((p:any) => 
-                  <option key={p.id} value={p.Key}>{p.Key} ({p.EquipmentType || "Any"})</option>
+                {packs.filter((p:any) => p.key?.endsWith('.v2')).map((p:any) => 
+                  <option key={p.id} value={p.key} data-id={p.id}>{p.key}</option>
                 )}
               </select>
             )}

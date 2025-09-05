@@ -50,6 +50,11 @@ export default function SessionWorkspace() {
   const [systemMessagePosted, setSystemMessagePosted] = useState<boolean>(false);
   const [rulePackKey, setRulePackKey] = useState<string>("");
   
+  // Rule pack selection state
+  const [availablePacks, setAvailablePacks] = useState<any[]>([]);
+  const [selectedPackKey, setSelectedPackKey] = useState<string>("");
+  const [updatingPack, setUpdatingPack] = useState<boolean>(false);
+  
   // Right rail state
   const [rr, setRR] = useState<{signals:any[]; testpoints:any[]; similar:any[]}>({signals:[],testpoints:[],similar:[]});
 
@@ -69,8 +74,12 @@ export default function SessionWorkspace() {
       setStatus("Checking session type...");
       const sessionRes = await fetch(`/api/sessions/${sessionId}`);
       const sessionData = await sessionRes.json();
-      const rulePackKey = sessionData?.session?.RulePackKey;
-      setRulePackKey(rulePackKey || "");
+      const SESSIONS_RULEPACK_FIELD = process.env.SESSIONS_RULEPACK_FIELD || "RulePackKey";
+      const rulePackKeySeen = sessionData?.session?.[SESSIONS_RULEPACK_FIELD];
+      setRulePackKey(rulePackKeySeen || "");
+      
+      // Add console.log for verification
+      console.log({ sessionId, rulePackKeySeen });
       
       // Check if there are zero actions and post system message
       const actionsRes = await fetch(`/api/sessions/${sessionId}`);
@@ -81,7 +90,7 @@ export default function SessionWorkspace() {
         await postSystemMessage(sessionData);
       }
       
-      if (rulePackKey?.endsWith(".v2")) {
+      if (rulePackKeySeen?.endsWith(".v2")) {
         setIsV2(true);
         setStatus("Loading v2 step...");
         
@@ -98,7 +107,7 @@ export default function SessionWorkspace() {
         } else {
           setStatus(json.error || "Failed to fetch v2 step");
         }
-      } else {
+      } else if (rulePackKeySeen) {
         // V1 session
         setIsV2(false);
         setStatus("Fetching first step...");
@@ -119,6 +128,25 @@ export default function SessionWorkspace() {
           setStatus(""); 
         } else {
           setStatus(json.error || "Failed to fetch first step");
+        }
+      } else {
+        // No rule pack set - show selection control
+        setIsV2(false);
+        setStatus("No rule pack selected. Please select one below.");
+        
+        // Load available packs for the equipment type
+        const equipmentType = sessionData?.session?.EquipmentInstance?.[0];
+        if (equipmentType) {
+          try {
+            const packsRes = await fetch(`/api/rulepacks/list?type=${encodeURIComponent(equipmentType)}`);
+            const packsData = await packsRes.json();
+            if (packsData.ok) {
+              const v2Packs = packsData.packs.filter((pack: any) => pack.key?.endsWith('.v2'));
+              setAvailablePacks(v2Packs);
+            }
+          } catch (e) {
+            console.log("Failed to load packs for equipment type:", e);
+          }
         }
       }
     };
@@ -245,15 +273,71 @@ export default function SessionWorkspace() {
     }
   }
 
+  async function handleRulePackSelection() {
+    if (!selectedPackKey) return;
+    
+    setUpdatingPack(true);
+    try {
+      const res = await fetch("/api/sessions/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          sessionId, 
+          RulePackKey: selectedPackKey
+        })
+      });
+      
+      const json = await res.json();
+      if (json.ok) {
+        setRulePackKey(selectedPackKey);
+        // Reload the page state
+        window.location.reload();
+      } else {
+        alert(`Failed to set rule pack: ${json.error || 'Unknown error'}`);
+      }
+    } catch (e) {
+      alert("Failed to set rule pack: " + e);
+    } finally {
+      setUpdatingPack(false);
+    }
+  }
+
   return (
     <div className="grid grid-cols-12 gap-4 p-6">
       <div className="col-span-8 space-y-4">
         <h1 className="text-2xl font-bold">Session {sessionId}</h1>
         
-        {/* Rule Pack Notice */}
+        {/* Rule Pack Selection Control */}
         {!rulePackKey && (
           <div className="rounded-lg border border-orange-400 bg-orange-50 text-orange-900 dark:bg-orange-200 dark:text-orange-900 px-4 py-3">
-            <strong className="font-medium">⚠️ No rule pack set.</strong> Return to New Session and select a pack under Advanced.
+            <div className="space-y-3">
+              <strong className="font-medium">⚠️ Select Rule Pack (.v2)</strong>
+              {availablePacks.length > 0 ? (
+                <div className="flex gap-2">
+                  <select
+                    className="flex-1 border border-orange-300 rounded px-3 py-2 bg-white text-orange-900"
+                    value={selectedPackKey}
+                    onChange={e => setSelectedPackKey(e.target.value)}
+                  >
+                    <option value="">Choose a rule pack...</option>
+                    {availablePacks.map((pack: any) => (
+                      <option key={pack.id} value={pack.key}>{pack.key}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleRulePackSelection}
+                    disabled={!selectedPackKey || updatingPack}
+                    className="px-4 py-2 bg-orange-600 text-white rounded disabled:opacity-50"
+                  >
+                    {updatingPack ? "Setting..." : "Set Pack"}
+                  </button>
+                </div>
+              ) : (
+                <div className="text-sm">
+                  No rule packs available for this equipment type. Please contact support.
+                </div>
+              )}
+            </div>
           </div>
         )}
         

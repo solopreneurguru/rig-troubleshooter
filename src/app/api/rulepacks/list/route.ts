@@ -42,7 +42,16 @@ export async function GET(request: Request) {
       return keyA.localeCompare(keyB);
     });
     
-    return NextResponse.json({ ok: true, packs: filteredPacks });
+    // Ensure response items include { id, key, equipmentType, active }
+    const responsePacks = filteredPacks.map((pack: any) => ({
+      id: pack.id,
+      key: pack.Key,
+      equipmentType: pack.EquipmentType,
+      active: pack.Active || true,
+      isV2: pack.isV2
+    }));
+    
+    return NextResponse.json({ ok: true, packs: responsePacks });
   } catch (e:any) {
     return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
   }

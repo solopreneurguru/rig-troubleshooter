@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSession, findRigByName, sanitizeFields } from "@/lib/airtable";
+import { createSession, findRigByName, sanitizeFields, setSessionFields } from "@/lib/airtable";
 
 export const runtime = "nodejs";
 
@@ -45,6 +45,27 @@ export async function POST(req: Request) {
       equipmentInstanceId,
       undefined // Don't pass failureMode here
     );
+    
+    // After creating the session (and before redirect), if we already know the selectedKey (from override or intake), 
+    // call the update API server-side to set RulePackKey immediately, and await it. 
+    // If that write fails, return {ok:false,error} to the client rather than navigating.
+    if (rulePackKey) {
+      try {
+        const SESSIONS_RULEPACK_FIELD = process.env.SESSIONS_RULEPACK_FIELD || "RulePackKey";
+        const updateFields = sanitizeFields({
+          [SESSIONS_RULEPACK_FIELD]: rulePackKey,
+          FailureMode: failureMode || undefined
+        });
+        
+        const updated = await setSessionFields(id, updateFields);
+        if (!updated) {
+          return NextResponse.json({ ok: false, error: "Failed to set RulePackKey after session creation" }, { status: 500 });
+        }
+      } catch (updateError: any) {
+        return NextResponse.json({ ok: false, error: `Failed to set RulePackKey: ${updateError?.message || 'Unknown error'}` }, { status: 500 });
+      }
+    }
+    
     return NextResponse.json({ ok: true, sessionId: id }, { status: 201 });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message ?? "unknown" }, { status: 500 });

@@ -60,9 +60,10 @@ export function classify(text: string): {
   const t = text.toLowerCase();
 
   // equipment pick (first match wins, but collect all to detect ambiguity)
+  // Ensure equipment match allows "top drive" (space) and case-insensitive
   const matches: EquipKey[] = [];
   for (const [key, syns] of Object.entries(EQUIP_SYNONYMS) as [EquipKey,string[]][]) {
-    if (syns.some(s => t.includes(s))) matches.push(key);
+    if (syns.some(s => t.includes(s.toLowerCase()))) matches.push(key);
   }
   const equipment = matches.length === 1 ? matches[0] : undefined;
 

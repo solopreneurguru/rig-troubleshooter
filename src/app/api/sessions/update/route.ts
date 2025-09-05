@@ -5,13 +5,31 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    const { sessionId, fields } = await req.json();
-    if (!sessionId || !fields) return NextResponse.json({ ok:false, error:"sessionId and fields required" }, { status:400 });
+    const body = await req.json();
+    const { sessionId, RulePackKey, FailureMode, ...otherFields } = body;
     
-    // Safety log (temporary) - confirm we are sending RulePackKey to Sessions
-    console.log("Session update fields:", Object.keys(fields));
+    if (!sessionId) return NextResponse.json({ ok:false, error:"sessionId required" }, { status:400 });
     
-    // sanitizeFields() should already drop Title/CreatedAt/Attachments
+    // Map RulePackKey coming in the body to the env field
+    const SESSIONS_RULEPACK_FIELD = process.env.SESSIONS_RULEPACK_FIELD || "RulePackKey";
+    
+    // Build fields object
+    const fields: any = {};
+    
+    // if body.RulePackKey present:
+    if (RulePackKey !== undefined) {
+      fields[SESSIONS_RULEPACK_FIELD] = RulePackKey;
+    }
+    
+    // Add other fields if present
+    if (FailureMode !== undefined) {
+      fields.FailureMode = FailureMode;
+    }
+    
+    // Add any other fields from the request
+    Object.assign(fields, otherFields);
+    
+    // Sanitize fields using BLOCKED_FIELDS. Never touch Title/CreatedAt/Attachments.
     const sanitizedFields = sanitizeFields(fields);
     const updated = await setSessionFields(sessionId, sanitizedFields);
     return NextResponse.json({ ok: true, updated });
