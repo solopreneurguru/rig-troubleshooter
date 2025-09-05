@@ -1,5 +1,9 @@
 "use client";
 import { useState } from "react";
+import { Citations } from "@/components/Citations";
+import { PlcReadCard } from "@/components/PlcReadCard";
+import { PhotoCard } from "@/components/PhotoCard";
+import { uploadToBlob } from "@/lib/upload";
 
 export default function V2StepCard({ sessionId, nodeKey, node, onSubmitted }:{
   sessionId: string; 
@@ -10,16 +14,21 @@ export default function V2StepCard({ sessionId, nodeKey, node, onSubmitted }:{
   const [value, setValue] = useState<number | undefined>();
   const [yesNo, setYesNo] = useState<boolean | undefined>();
   const [confirmed, setConfirmed] = useState(false);
+  const [uploadedPhotoUrl, setUploadedPhotoUrl] = useState<string | undefined>();
 
   async function submit() {
-    let payload: any = { sessionId, stepId: node.id, kind: node.type };
+    let payload: any = { sessionId, stepId: node.id, kind: node.type || node.kind };
     
-    if (node.type === "measure") { 
+    if (node.type === "measure" || node.kind === "measure") { 
       payload.value = value; 
-    } else if (node.type === "ask") {
+    } else if (node.type === "ask" || node.kind === "ask") {
       payload.value = yesNo;
     } else if (node.type === "safetyGate") {
       payload.value = { confirmed: true };
+    } else if (node.kind === "plc_read") {
+      payload.plcResult = value;
+    } else if (node.kind === "photo") {
+      payload.photoUrl = uploadedPhotoUrl;
     }
     
     const r = await fetch("/api/plan/v2/submit", { 
@@ -84,11 +93,62 @@ export default function V2StepCard({ sessionId, nodeKey, node, onSubmitted }:{
     );
   }
 
-  // Default rendering for info, ask, end
+  // Handle new step kinds (V2Step)
+  if (node.kind === "plc_read") {
+    return (
+      <div>
+        <Citations items={node.citations} />
+        <PlcReadCard 
+          step={node} 
+          onSubmit={(payload) => {
+            setValue(payload.plcResult as any);
+            submit();
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (node.kind === "photo") {
+    return (
+      <div>
+        <Citations items={node.citations} />
+        <PhotoCard 
+          step={node} 
+          uploadedUrl={uploadedPhotoUrl}
+          onSubmit={(payload) => {
+            setUploadedPhotoUrl(payload.photoUrl);
+            submit();
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (node.kind === "info") {
+    return (
+      <div className="rounded-2xl p-4 shadow">
+        <div className="font-semibold mb-2">Information</div>
+        <div className="mb-3">{node.markdown || node.text}</div>
+        <Citations items={node.citations} />
+        <div className="mt-3">
+          <button 
+            className="bg-black text-white rounded px-4 py-2" 
+            onClick={submit}
+          >
+            Continue
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Default rendering for legacy info, ask, end
   return (
     <div className="rounded-2xl p-4 shadow">
       <div className="font-semibold mb-2">Active Step</div>
       <div className="mb-3">{node.text}</div>
+      <Citations items={node.citations} />
       
       {node.type === "ask" && (
         <div className="flex gap-2">

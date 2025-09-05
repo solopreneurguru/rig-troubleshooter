@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionById, listActionsForSession, getRulePackKeyForSession } from "@/lib/airtable";
 import { loadV2PackByKey, nextStepId } from "@/lib/plan_v2";
+import type { V2Step } from "@/types/steps";
 
 // NOTE: reuse existing airtable helpers if names differ; otherwise add thin wrappers in airtable.ts:
 //   - getSessionById(id)
@@ -30,7 +31,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok:true, done:true, step:null });
     }
     const step = pack.steps[stepId];
-    return NextResponse.json({ ok:true, done:false, step });
+    
+    // Ensure the step is properly typed for the response
+    const responseStep: V2Step | any = {
+      ...step,
+      // Pass through citations if present
+      citations: (step as any).citations || []
+    };
+    
+    return NextResponse.json({ ok:true, done:false, step: responseStep });
   } catch (err:any) {
     return NextResponse.json({ ok:false, error:String(err?.message||err) }, { status:500 });
   }

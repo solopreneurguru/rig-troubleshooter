@@ -1,7 +1,9 @@
 // Minimal step engine for v2 RulePacks.
 import { getRulePackByKeySafe } from "@/lib/airtable";
+import type { V2Step } from "@/types/steps";
 
-export type V2Step =
+// Legacy step types for backward compatibility
+export type LegacyV2Step =
   | { id: string; type: "info"; text: string; next?: string }
   | { id: string; type: "ask";  text: string; yes?: string; no?: string }
   | { id: string; type: "measure"; text: string; unit?: string;
@@ -15,16 +17,19 @@ export type V2Pack = {
   key: string;
   version: 2;
   start: string;
-  steps: Record<string, V2Step>;
+  steps: Record<string, V2Step | LegacyV2Step>;
 };
 
 export type V2Action = {
   stepId: string;
-  kind: "info"|"ask"|"measure"|"safetyGate";
-  value?: any;        // ask: boolean; measure: number/string; safetyGate:{confirmed:boolean}
-  ok?: boolean;       // measure only
+  kind: "info"|"ask"|"measure"|"safetyGate"|"plc_read"|"photo";
+  value?: any;        // ask: boolean; measure: number/string; safetyGate:{confirmed:boolean}; plc_read: number|string|boolean; photo: string
+  ok?: boolean;       // measure/plc_read only
   confirmedById?: string; // optional
   confirmedAt?: string;   // optional ISO
+  citations?: any[];  // citations acknowledged
+  plcResult?: number | string | boolean; // plc_read result
+  photoUrl?: string;  // photo upload URL
 };
 
 export function isV2Pack(p: any): p is V2Pack {
@@ -32,7 +37,7 @@ export function isV2Pack(p: any): p is V2Pack {
 }
 
 // Compute next step id from a history of actions.
-// If no actions: return start. If last action branches (ask/measure), follow branch.
+// If no actions: return start. If last action branches (ask/measure/plc_read), follow branch.
 export function nextStepId(pack: V2Pack, actions: V2Action[]): string | null {
   if (!actions || actions.length === 0) return pack.start;
 
@@ -40,39 +45,83 @@ export function nextStepId(pack: V2Pack, actions: V2Action[]): string | null {
   const step = pack.steps[last.stepId];
   if (!step) return pack.start;
 
-  if (step.type === "ask") {
-    const goYes = step.yes ?? null;
-    const goNo  = step.no  ?? null;
-    if (last.value === true && goYes) return goYes;
-    if (last.value === false && goNo) return goNo;
-    return goNo ?? goYes ?? null;
-  }
-
-  if (step.type === "measure") {
-    // Branch on ok result if configured
-    const m = step;
-    if (typeof last.ok === "boolean") {
-      if (last.ok && m.passNext) return m.passNext;
-      if (!last.ok && m.failNext) return m.failNext;
+  // Handle new step kinds (V2Step)
+  if ('kind' in step) {
+    if (step.kind === "ask") {
+      const goYes = (step as any).yes ?? null;
+      const goNo  = (step as any).no  ?? null;
+      if (last.value === true && goYes) return goYes;
+      if (last.value === false && goNo) return goNo;
+      return goNo ?? goYes ?? null;
     }
-    // Fallback to passNext or next-like behavior
-    return m.passNext ?? m.failNext ?? null;
+
+    if (step.kind === "measure") {
+      const m = step as any;
+      if (typeof last.ok === "boolean") {
+        if (last.ok && m.passNext) return m.passNext;
+        if (!last.ok && m.failNext) return m.failNext;
+      }
+      return m.passNext ?? m.failNext ?? null;
+    }
+
+    if (step.kind === "plc_read") {
+      const plcStep = step as any;
+      if (typeof last.ok === "boolean") {
+        if (last.ok && plcStep.nextOn?.pass) return plcStep.nextOn.pass;
+        if (!last.ok && plcStep.nextOn?.fail) return plcStep.nextOn.fail;
+      }
+      return plcStep.nextOn?.pass ?? plcStep.nextOn?.fail ?? null;
+    }
+
+    if (step.kind === "photo") {
+      return (step as any).next ?? null;
+    }
+
+    if (step.kind === "info") {
+      return (step as any).next ?? null;
+    }
+
+    if (step.kind === "end") {
+      return null;
+    }
   }
 
-  if (step.type === "safetyGate") {
-    // Advance only if confirmed
-    const confirmed = !!(last?.value?.confirmed || last?.value === true);
-    return confirmed ? (step.next ?? null) : step.id; // stay put if not confirmed
-  }
+  // Handle legacy step types (LegacyV2Step)
+  if ('type' in step) {
+    if (step.type === "ask") {
+      const goYes = (step as any).yes ?? null;
+      const goNo  = (step as any).no  ?? null;
+      if (last.value === true && goYes) return goYes;
+      if (last.value === false && goNo) return goNo;
+      return goNo ?? goYes ?? null;
+    }
 
-  if (step.type === "info") {
-    return step.next ?? null;
+    if (step.type === "measure") {
+      // Branch on ok result if configured
+      const m = step as any;
+      if (typeof last.ok === "boolean") {
+        if (last.ok && m.passNext) return m.passNext;
+        if (!last.ok && m.failNext) return m.failNext;
+      }
+      // Fallback to passNext or next-like behavior
+      return m.passNext ?? m.failNext ?? null;
+    }
+
+    if (step.type === "safetyGate") {
+      // Advance only if confirmed
+      const confirmed = !!(last?.value?.confirmed || last?.value === true);
+      return confirmed ? ((step as any).next ?? null) : step.id; // stay put if not confirmed
+    }
+
+    if (step.type === "info") {
+      return (step as any).next ?? null;
+    }
   }
 
   return null; // end
 }
 
-export function evaluateMeasure(step: Extract<V2Step, {type:"measure"}>, value: number): boolean | undefined {
+export function evaluateMeasure(step: Extract<LegacyV2Step, {type:"measure"}>, value: number): boolean | undefined {
   const cond = step.okIf;
   if (!cond) return undefined;
   const v = Number(value);
@@ -83,6 +132,22 @@ export function evaluateMeasure(step: Extract<V2Step, {type:"measure"}>, value: 
     case "<=": return v <= cond.value;
     case "==": return v == cond.value;
     case "!=": return v != cond.value;
+  }
+}
+
+export function evaluatePlcRead(step: any, value: number | string | boolean): boolean | undefined {
+  const cond = step.expect;
+  if (!cond) return undefined;
+  
+  switch (cond.op) {
+    case "==": return value == cond.value;
+    case "!=": return value != cond.value;
+    case ">":  return Number(value) > Number(cond.value);
+    case ">=": return Number(value) >= Number(cond.value);
+    case "<":  return Number(value) < Number(cond.value);
+    case "<=": return Number(value) <= Number(cond.value);
+    case "in": return Array.isArray(cond.value) && cond.value.includes(value);
+    default: return undefined;
   }
 }
 

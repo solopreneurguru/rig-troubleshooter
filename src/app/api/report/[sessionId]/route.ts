@@ -30,6 +30,9 @@ function ReportDoc({ data }: any) {
           React.createElement(Text, null, `#${a.Order ?? i+1}  ${a.StepKey} — ${a.Instruction}`),
           a.Expected ? React.createElement(Text, null, `Expected: ${a.Expected}`) : null,
           a.Citation ? React.createElement(Text, null, `Citation: ${a.Citation}`) : null,
+          a.Citations ? React.createElement(Text, null, `Citations: ${JSON.stringify(a.Citations)}`) : null,
+          a.PlcResult ? React.createElement(Text, null, `PLC Result: ${a.PlcResult}`) : null,
+          a.PhotoUrl ? React.createElement(Text, null, `Photo: ${a.PhotoUrl}`) : null,
           ...(a.readings?.map((r: any, j: number) =>
             React.createElement(Text, { key: j, style: styles.mono }, `Reading: ${r.Value || ""} ${r.Unit || ""}  Result: ${r.PassFail || ""}`)
           ) || [])

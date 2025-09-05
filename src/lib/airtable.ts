@@ -783,7 +783,15 @@ export async function listActionsForSession(sessionId: string): Promise<Array<an
   return (records || []).map(normalize);
 }
 
-export async function appendAction(sessionId: string, a: { stepId: string; kind: string; value?: any; ok?: boolean }) {
+export async function appendAction(sessionId: string, a: { 
+  stepId: string; 
+  kind: string; 
+  value?: any; 
+  ok?: boolean;
+  citations?: any[];
+  plcResult?: number | string | boolean;
+  photoUrl?: string;
+}) {
   const tbl = table(actionsTableId);
   const fields: Record<string, any> = {
     Session: [sessionId],
@@ -792,5 +800,8 @@ export async function appendAction(sessionId: string, a: { stepId: string; kind:
   };
   if (a.value !== undefined) fields.Value = typeof a.value === "string" ? a.value : JSON.stringify(a.value);
   if (a.ok !== undefined) fields.Ok = a.ok; // add if your Actions table has a boolean "Ok" field; otherwise omit.
+  if (a.citations !== undefined) fields.Citations = JSON.stringify(a.citations);
+  if (a.plcResult !== undefined) fields.PlcResult = typeof a.plcResult === "string" ? a.plcResult : JSON.stringify(a.plcResult);
+  if (a.photoUrl !== undefined) fields.PhotoUrl = a.photoUrl;
   await tbl.create([{ fields }]);
 }
