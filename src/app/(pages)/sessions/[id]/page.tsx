@@ -248,6 +248,13 @@ export default function SessionWorkspace() {
       <div className="col-span-8 space-y-4">
         <h1 className="text-2xl font-bold">Session {sessionId}</h1>
         
+        {/* Rule Pack Notice */}
+        {!rulePackKey && (
+          <div className="rounded-lg border border-orange-400 bg-orange-50 text-orange-900 dark:bg-orange-200 dark:text-orange-900 px-4 py-3">
+            <strong className="font-medium">⚠️ No rule pack set.</strong> Return to New Session and select a pack under Advanced.
+          </div>
+        )}
+        
         {/* Safety Banner - Always visible when action requires confirmation */}
         {step?.requireConfirm && (
           <div className="rounded-lg border border-amber-400 bg-amber-50 text-amber-900 dark:bg-amber-200 dark:text-amber-900 px-4 py-3">

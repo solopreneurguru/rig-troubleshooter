@@ -24,6 +24,8 @@ const FAILURE_SYNONYMS: Record<string, FailureMode> = {
   "doesn't work": "Won't Start", "doesnt work": "Won't Start",
   "isn't starting": "Won't Start", "isnt starting": "Won't Start",
   "won't run": "Won't Start", "wont run": "Won't Start",
+  "not turning on": "Won't Start", "does not turn on": "Won't Start",
+  "won't power up": "Won't Start", "no power": "Won't Start",
   "low rpm": "Low RPM", "slow": "Low RPM",
   "trip": "Trips", "trips": "Trips",
   "no speed ref": "No Speed Ref", "speed ref": "No Speed Ref",

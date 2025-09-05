@@ -9,12 +9,13 @@ export async function POST(req: Request) {
 
     const { equipment, failureMode, disambiguation, packKeyCandidate } = classify(text);
 
+    // Ensure consistent JSON: { ok: true, equipment, failureMode, packKey, disambiguation } or { ok:false, error }
     return NextResponse.json({
       ok: true,
       equipment,
       failureMode,
-      disambiguation,
-      packKey: packKeyCandidate // may be undefined if ambiguous; UI should handle
+      packKey: packKeyCandidate, // may be undefined if ambiguous; UI should handle
+      disambiguation
     });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message ?? "unknown" }, { status: 500 });

@@ -12,6 +12,18 @@ export async function POST(req: Request) {
     const updated = await setSessionFields(sessionId, sanitizeFields(fields));
     return NextResponse.json({ ok: true, updated });
   } catch (e:any) {
-    return NextResponse.json({ ok:false, error: e?.message ?? "unknown" }, { status:500 });
+    // When Airtable returns an error like "Unknown field name …" or "Insufficient permissions to create new select option …", 
+    // return { ok:false, error } and status 400 so the client can show it
+    const errorMessage = e?.message ?? "unknown";
+    const isAirtableError = errorMessage.includes("Unknown field name") || 
+                           errorMessage.includes("Insufficient permissions to create new select option") ||
+                           errorMessage.includes("Field") && errorMessage.includes("does not exist");
+    
+    return NextResponse.json({ 
+      ok: false, 
+      error: errorMessage 
+    }, { 
+      status: isAirtableError ? 400 : 500 
+    });
   }
 }

@@ -118,29 +118,35 @@ export default function NewSessionPage() {
       });
       const intake = await intakeRes.json().catch(() => null);
 
-      if (intake?.packKey || intake?.failureMode) {
-        const updRes = await fetch("/api/sessions/update", {
-          method:"POST",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ sessionId, fields: {
-            ...(intake.packKey ? { RulePackKey: intake.packKey } : {}),
-            ...(intake.failureMode ? { FailureMode: intake.failureMode } : {})
-          }})
-        });
-        const upd = await updRes.json().catch(() => null);
-        if (!updRes.ok || !upd?.ok) {
-          console.warn("sessions/update failed", upd);
-          // fallthrough to Advanced override
-        }
-      }
-
-      // Fallback if no packKey
+      // If intake.packKey is falsy, show advanced and return early
       if (!intake?.packKey) {
-        setShowAdvanced(true); // open the override UI
+        setShowAdvanced(true);
         setOverrideHint("I couldn't auto-select a rule pack. Please pick one.");
-        return; // keep the user on /sessions/new
+        setBusy(false);
+        return; // DO NOT push to /sessions/[id]; return early
       }
 
+      // If intake.packKey exists, update session with RulePackKey and FailureMode
+      const updRes = await fetch("/api/sessions/update", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ sessionId, fields: {
+          RulePackKey: intake.packKey,
+          FailureMode: intake.failureMode ?? undefined
+        }})
+      });
+      const upd = await updRes.json().catch(() => null);
+      
+      // Read the JSON; if !ok, show alert and keep user on page with Advanced open
+      if (!updRes.ok || !upd?.ok) {
+        alert(`Failed to set RulePackKey: ${upd?.error || 'Unknown error'}`);
+        setShowAdvanced(true);
+        setOverrideHint("Failed to set rule pack. Please try again.");
+        setBusy(false);
+        return;
+      }
+
+      // Only then router.push to /sessions/[id]
       router.push(`/sessions/${sessionId}`);
     } catch (e) {
       alert("Failed to create session: " + e);
