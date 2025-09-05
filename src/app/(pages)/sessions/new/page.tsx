@@ -2,6 +2,26 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+interface EquipmentType {
+  id: string;
+  Name: string;
+  Description?: string;
+}
+
+interface EquipmentInstance {
+  id: string;
+  Name: string;
+  SerialNumber?: string;
+  EquipmentType?: string[];
+  Rig?: string[];
+}
+
+interface Rig {
+  id: string;
+  Name: string;
+  Type?: string;
+}
+
 export default function NewSessionPage() {
   const [rigName, setRigName] = useState("");
   const [problem, setProblem] = useState("");
@@ -9,16 +29,50 @@ export default function NewSessionPage() {
   const [rpKey, setRpKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  
+  // New state for equipment selection
+  const [showRigModal, setShowRigModal] = useState(false);
+  const [showEquipmentModal, setShowEquipmentModal] = useState(false);
+  const [selectedRig, setSelectedRig] = useState<Rig | null>(null);
+  const [selectedEquipmentInstance, setSelectedEquipmentInstance] = useState<EquipmentInstance | null>(null);
+  const [equipmentTypes, setEquipmentTypes] = useState<EquipmentType[]>([]);
+  const [equipmentInstances, setEquipmentInstances] = useState<EquipmentInstance[]>([]);
+  const [rigs, setRigs] = useState<Rig[]>([]);
+  
+  // New equipment instance creation
+  const [newEquipmentName, setNewEquipmentName] = useState("");
+  const [newEquipmentSerial, setNewEquipmentSerial] = useState("");
+  const [newEquipmentType, setNewEquipmentType] = useState("");
+  const [newEquipmentPLCProject, setNewEquipmentPLCProject] = useState("");
+  
   const router = useRouter();
 
   useEffect(() => {
     (async () => {
       try {
+        // Load rule packs
         const r = await fetch("/api/rulepacks/list");
         const j = await r.json();
         if (j.ok) setPacks(j.packs || []);
+        
+        // Load equipment types
+        const etRes = await fetch("/api/equipment/types");
+        const etData = await etRes.json();
+        if (etData.ok) setEquipmentTypes(etData.types || []);
+        
+        // Load rigs
+        const rigsRes = await fetch("/api/rigs/list");
+        const rigsData = await rigsRes.json();
+        if (rigsData.ok) setRigs(rigsData.rigs || []);
+        
+        // Load equipment instances
+        const eiRes = await fetch("/api/equipment/instances");
+        const eiData = await eiRes.json();
+        if (eiData.ok) setEquipmentInstances(eiData.instances || []);
+        
       } catch (e) {
-        console.log("Failed to load rule packs:", e);
+        console.log("Failed to load data:", e);
       } finally {
         setLoading(false);
       }
@@ -26,40 +80,328 @@ export default function NewSessionPage() {
   }, []);
 
   async function createSession() {
-    if (!rpKey) {
-      alert("Please select a Rule Pack");
+    if (!problem.trim()) {
+      alert("Please describe your issue");
       return;
     }
+    
     setBusy(true);
-    const res = await fetch("/api/sessions/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: `Session ${Date.now()}`, rigName, problem, rulePackKey: rpKey }),
-    });
-    const json = await res.json();
-    setBusy(false);
-    if (json.ok) router.push(`/sessions/${json.id}`);
-    else alert(json.error || "Failed to create session");
+    try {
+      // 1) Create session first (existing endpoint)
+      const res = await fetch("/api/sessions/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          rigName: selectedRig?.Name || rigName, 
+          problem, 
+          rulePackKey: rpKey,
+          equipmentInstanceId: selectedEquipmentInstance?.id
+          // DO NOT include Title - it's computed by Airtable formula
+        }),
+      });
+      
+      const json = await res.json();
+      if (!json.ok) {
+        alert(json.error || "Failed to create session");
+        setBusy(false);
+        return;
+      }
+      
+      const sessionId = json.id;
+      
+      // 2) Call Symptom Router
+      const intake = await fetch("/api/intake/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, text: problem })
+      }).then(r => r.json());
+      
+      // 3) Write back RulePackKey and FailureMode if resolved
+      if (intake?.packKey || intake?.failureMode) {
+        await fetch("/api/sessions/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            fields: {
+              ...(intake.packKey ? { RulePackKey: intake.packKey } : {}),
+              ...(intake.failureMode ? { FailureMode: intake.failureMode } : {})
+            }
+          })
+        });
+      }
+      
+      // 4) Navigate to workspace
+      router.push(`/sessions/${sessionId}`);
+    } catch (e) {
+      alert("Failed to create session: " + e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  
+  async function createEquipmentInstance() {
+    if (!newEquipmentName.trim()) {
+      alert("Please enter equipment name");
+      return;
+    }
+    
+    try {
+      const res = await fetch("/api/equipment/instances/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          Name: newEquipmentName,
+          SerialNumber: newEquipmentSerial || undefined,
+          EquipmentType: newEquipmentType ? [newEquipmentType] : undefined,
+          Rig: selectedRig ? [selectedRig.id] : undefined,
+          PLCProjectDoc: newEquipmentPLCProject || undefined,
+          Status: "Active"
+        }),
+      });
+      
+      const json = await res.json();
+      if (json.ok) {
+        setSelectedEquipmentInstance({ id: json.id, Name: newEquipmentName, SerialNumber: newEquipmentSerial });
+        setShowEquipmentModal(false);
+        setNewEquipmentName("");
+        setNewEquipmentSerial("");
+        setNewEquipmentType("");
+        setNewEquipmentPLCProject("");
+      } else {
+        alert(json.error || "Failed to create equipment instance");
+      }
+    } catch (e) {
+      alert("Failed to create equipment instance: " + e);
+    }
   }
 
   return (
-    <main className="p-6 max-w-xl space-y-3">
+    <main className="p-6 max-w-2xl space-y-4">
       <h1 className="text-2xl font-bold">Start a New Session</h1>
-      <input className="w-full border rounded p-2" placeholder="Rig Name (optional)" value={rigName} onChange={e=>setRigName(e.target.value)} />
-      <textarea className="w-full border rounded p-2" rows={3} placeholder="Problem description" value={problem} onChange={e=>setProblem(e.target.value)} />
       
-      {loading ? (
-        <div className="text-center py-4">Loading Rule Packs...</div>
-      ) : (
-        <select className="w-full border rounded p-2" value={rpKey} onChange={e=>setRpKey(e.target.value)}>
-          <option value="">Select a RulePack…</option>
-          {packs.map((p:any) => <option key={p.id} value={p.Key}>{p.Key} ({p.EquipmentType || "Any"})</option>)}
-        </select>
-      )}
+      {/* Rig Selection */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium">Rig</label>
+        <div className="flex gap-2">
+          <input 
+            className="flex-1 border rounded p-2" 
+            placeholder="Rig Name (optional)" 
+            value={selectedRig?.Name || rigName} 
+            onChange={e=>setRigName(e.target.value)} 
+            disabled={selectedRig !== null}
+          />
+          <button 
+            onClick={() => setShowRigModal(true)}
+            className="px-3 py-2 border rounded text-sm"
+          >
+            Select Rig
+          </button>
+        </div>
+        {selectedRig && (
+          <div className="text-sm text-gray-600">
+            Selected: {selectedRig.Name} {selectedRig.Type && `(${selectedRig.Type})`}
+            <button 
+              onClick={() => setSelectedRig(null)}
+              className="ml-2 text-red-600 underline"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+      </div>
       
-      <button onClick={createSession} disabled={busy || !rpKey} className="px-4 py-2 rounded bg-black text-white">
+      {/* Equipment Instance Selection */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium">Equipment Instance</label>
+        <div className="flex gap-2">
+          <input 
+            className="flex-1 border rounded p-2" 
+            placeholder="Equipment Instance" 
+            value={selectedEquipmentInstance?.Name || ""} 
+            disabled={true}
+          />
+          <button 
+            onClick={() => setShowEquipmentModal(true)}
+            className="px-3 py-2 border rounded text-sm"
+          >
+            Select/Create Equipment
+          </button>
+        </div>
+        {selectedEquipmentInstance && (
+          <div className="text-sm text-gray-600">
+            Selected: {selectedEquipmentInstance.Name} 
+            {selectedEquipmentInstance.SerialNumber && ` (S/N: ${selectedEquipmentInstance.SerialNumber})`}
+            <button 
+              onClick={() => setSelectedEquipmentInstance(null)}
+              className="ml-2 text-red-600 underline"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+      </div>
+      
+      {/* Problem Description */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium">Problem Description *</label>
+        <textarea 
+          className="w-full border rounded p-2" 
+          rows={4} 
+          placeholder="Describe your issue and equipment in detail..." 
+          value={problem} 
+          onChange={e=>setProblem(e.target.value)} 
+        />
+      </div>
+      
+      {/* Advanced Rule Pack Selection */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <label className="block text-sm font-medium">Rule Pack Selection</label>
+          <button 
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="text-xs text-blue-600 underline"
+          >
+            {showAdvanced ? "Hide Advanced" : "Advanced → Override pack"}
+          </button>
+        </div>
+        {showAdvanced && (
+          <div className="border rounded p-3 bg-gray-50">
+            {loading ? (
+              <div className="text-center py-4">Loading Rule Packs...</div>
+            ) : (
+              <select className="w-full border rounded p-2" value={rpKey} onChange={e=>setRpKey(e.target.value)}>
+                <option value="">Auto-select from problem description</option>
+                {packs.map((p:any) => <option key={p.id} value={p.Key}>{p.Key} ({p.EquipmentType || "Any"})</option>)}
+              </select>
+            )}
+            <div className="text-xs text-gray-600 mt-2">
+              Leave empty to auto-select based on problem description and equipment type.
+            </div>
+          </div>
+        )}
+        {!showAdvanced && (
+          <div className="text-sm text-gray-600">
+            Rule pack will be auto-selected from problem description
+          </div>
+        )}
+      </div>
+      
+      <button 
+        onClick={createSession} 
+        disabled={busy || !problem.trim()} 
+        className="px-4 py-2 rounded bg-black text-white disabled:opacity-50"
+      >
         {busy ? "Creating..." : "Create Session"}
       </button>
+      
+      {/* Rig Selection Modal */}
+      {showRigModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-md w-full max-h-96 overflow-y-auto">
+            <h3 className="text-lg font-bold mb-4">Select Rig</h3>
+            <div className="space-y-2">
+              {rigs.map((rig) => (
+                <button
+                  key={rig.id}
+                  onClick={() => {
+                    setSelectedRig(rig);
+                    setShowRigModal(false);
+                  }}
+                  className="w-full text-left p-2 border rounded hover:bg-gray-50"
+                >
+                  <div className="font-medium">{rig.Name}</div>
+                  {rig.Type && <div className="text-sm text-gray-600">{rig.Type}</div>}
+                </button>
+              ))}
+            </div>
+            <button 
+              onClick={() => setShowRigModal(false)}
+              className="mt-4 px-4 py-2 border rounded"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Equipment Instance Modal */}
+      {showEquipmentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-md w-full max-h-96 overflow-y-auto">
+            <h3 className="text-lg font-bold mb-4">Select or Create Equipment Instance</h3>
+            
+            {/* Existing Equipment Instances */}
+            <div className="mb-4">
+              <h4 className="font-medium mb-2">Existing Equipment:</h4>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {equipmentInstances.map((instance) => (
+                  <button
+                    key={instance.id}
+                    onClick={() => {
+                      setSelectedEquipmentInstance(instance);
+                      setShowEquipmentModal(false);
+                    }}
+                    className="w-full text-left p-2 border rounded hover:bg-gray-50"
+                  >
+                    <div className="font-medium">{instance.Name}</div>
+                    {instance.SerialNumber && <div className="text-sm text-gray-600">S/N: {instance.SerialNumber}</div>}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Create New Equipment Instance */}
+            <div className="border-t pt-4">
+              <h4 className="font-medium mb-2">Create New Equipment:</h4>
+              <div className="space-y-2">
+                <input
+                  className="w-full border rounded p-2"
+                  placeholder="Equipment Name *"
+                  value={newEquipmentName}
+                  onChange={e => setNewEquipmentName(e.target.value)}
+                />
+                <input
+                  className="w-full border rounded p-2"
+                  placeholder="Serial Number (optional)"
+                  value={newEquipmentSerial}
+                  onChange={e => setNewEquipmentSerial(e.target.value)}
+                />
+                <select
+                  className="w-full border rounded p-2"
+                  value={newEquipmentType}
+                  onChange={e => setNewEquipmentType(e.target.value)}
+                >
+                  <option value="">Select Equipment Type (optional)</option>
+                  {equipmentTypes.map((type) => (
+                    <option key={type.id} value={type.id}>{type.Name}</option>
+                  ))}
+                </select>
+                <input
+                  className="w-full border rounded p-2"
+                  placeholder="PLC Project Doc Link (optional)"
+                  value={newEquipmentPLCProject}
+                  onChange={e => setNewEquipmentPLCProject(e.target.value)}
+                />
+                <button
+                  onClick={createEquipmentInstance}
+                  disabled={!newEquipmentName.trim()}
+                  className="w-full px-3 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+                >
+                  Create Equipment
+                </button>
+              </div>
+            </div>
+            
+            <button 
+              onClick={() => setShowEquipmentModal(false)}
+              className="mt-4 px-4 py-2 border rounded"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
