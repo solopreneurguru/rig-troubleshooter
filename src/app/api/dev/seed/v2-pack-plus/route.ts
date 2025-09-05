@@ -61,10 +61,17 @@ const SAMPLE_PLUS = {
   }
 };
 
-export async function POST() {
-  // Guard: do not seed in production
-  if (process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production") {
-    return NextResponse.json({ ok: false, error: "Seeding disabled in production" }, { status: 403 });
+// Allow only with an admin token in production
+function isProdAllowed(req: Request) {
+  const token = req.headers.get('x-admin-token');
+  const need = process.env.ADMIN_DEV_TOKEN;
+  return !!need && !!token && token === need;
+}
+
+export async function POST(req: Request) {
+  const env = process.env.VERCEL_ENV; // 'production' | 'preview' | 'development'
+  if (env === 'production' && !isProdAllowed(req)) {
+    return NextResponse.json({ ok: false, error: 'Disabled in production' }, { status: 403 });
   }
   if (!RULEPACKS_ID) {
     return NextResponse.json({ ok: false, error: "TB_RULEPACKS missing" }, { status: 500 });
