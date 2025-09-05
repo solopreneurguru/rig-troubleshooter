@@ -1,8 +1,21 @@
 import { NextResponse } from "next/server";
-import { table, normalize } from "@/lib/airtable";
-// If you have explicit table id exports, import them; otherwise use process.env.TB_* ids:
+import Airtable from "airtable";
+
+const apiKey = process.env.AIRTABLE_API_KEY?.trim();
+const baseId = process.env.AIRTABLE_BASE_ID;
 const RULEPACKS_ID = process.env.TB_RULEPACKS!;
 const EQUIPTYPES_ID = process.env.TB_EQUIPMENT_TYPES || process.env.TB_EQUIP_TYPES;
+
+const base = apiKey && baseId ? new Airtable({ apiKey }).base(baseId) : null;
+const table = (id?: string) => {
+  if (!base) throw new Error("Airtable base not configured");
+  if (!id) throw new Error("Airtable table ID not provided");
+  return base(id);
+};
+
+function normalize(record: any) {
+  return { id: record.id, ...(record.fields as any) };
+}
 
 const SAMPLE = {
   key: "topdrive.wont_start.v2",
