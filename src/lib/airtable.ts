@@ -426,23 +426,26 @@ export async function getEquipmentInstanceById(id: string): Promise<EquipmentIns
 }
 
 export async function createEquipmentInstance(fields: {
-  Name: string;
-  SerialNumber?: string;
-  EquipmentType?: string[];
-  Rig?: string[];
-  PLCProjectDoc?: string;
-  Status?: string;
-  Notes?: string;
+  name?: string;
+  rigId?: string;
+  typeId?: string;
+  serial?: string;
+  variantNotes?: string;
+  plcDocId?: string;           // optional link to a Documents row
+  commissionedAt?: string;     // ISO date
 }): Promise<string> {
   if (!equipmentInstancesTableId) throw new Error("Equipment Instances table not configured");
   const tbl = table(equipmentInstancesTableId);
-  const payload: any = { Name: fields.Name };
-  if (fields.SerialNumber) payload.SerialNumber = fields.SerialNumber;
-  if (fields.EquipmentType) payload[EQI_TYPE_FIELD] = fields.EquipmentType;
-  if (fields.Rig) payload.Rig = fields.Rig;
-  if (fields.PLCProjectDoc) payload.PLCProjectDoc = fields.PLCProjectDoc;
-  if (fields.Status) payload.Status = fields.Status;
-  if (fields.Notes) payload.Notes = fields.Notes;
+  const payload = sanitizeFields({
+    Name: fields.name ?? undefined,
+    Rig: fields.rigId ? [fields.rigId] : undefined,
+    [EQI_TYPE_FIELD]: fields.typeId ? [fields.typeId] : undefined,
+    Serial: fields.serial ?? undefined,
+    VariantNotes: fields.variantNotes ?? undefined,
+    PLCProject: fields.plcDocId ? [fields.plcDocId] : undefined,
+    CommissionedAt: fields.commissionedAt ?? undefined,
+    // DO NOT include Status here
+  });
   const recs = await tbl.create([{ fields: payload }]);
   return recs[0].id;
 }

@@ -8,8 +8,12 @@ export async function POST(req: Request) {
     const { sessionId, fields } = await req.json();
     if (!sessionId || !fields) return NextResponse.json({ ok:false, error:"sessionId and fields required" }, { status:400 });
     
+    // Safety log (temporary) - confirm we are sending RulePackKey to Sessions
+    console.log("Session update fields:", Object.keys(fields));
+    
     // sanitizeFields() should already drop Title/CreatedAt/Attachments
-    const updated = await setSessionFields(sessionId, sanitizeFields(fields));
+    const sanitizedFields = sanitizeFields(fields);
+    const updated = await setSessionFields(sessionId, sanitizedFields);
     return NextResponse.json({ ok: true, updated });
   } catch (e:any) {
     // When Airtable returns an error like "Unknown field name …" or "Insufficient permissions to create new select option …", 

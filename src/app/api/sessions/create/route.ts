@@ -21,19 +21,16 @@ export async function POST(req: Request) {
       if (rig?.id) rigId = rig.id;
     }
     
-    // Build explicit fields object and sanitize
+    // Ensure fields are only: { Rig: [rigId], [SESS_EQUIP_FIELD]: [equipmentId], Problem, Status:"Open" }
+    // Title must NOT be sent.
     const fields = sanitizeFields({
       Rig: rigId ? [rigId] : undefined,
       EquipmentInstance: equipmentInstanceId ? [equipmentInstanceId] : undefined,
       Problem: problem || undefined,
-      Status: "Open",
-      RulePackKey: rulePackKey || undefined,
-      FailureMode: failureMode || undefined,
+      Status: "Open"
       // DO NOT include Title - it's computed by Airtable formula
+      // DO NOT include RulePackKey or FailureMode here - they'll be set later via update
     });
-    
-    // Log field names for debugging
-    console.log("Session create fields:", Object.keys(fields));
     
     // Ensure "Title" never appears in the fields
     if ("Title" in fields) {
@@ -44,9 +41,9 @@ export async function POST(req: Request) {
       "", // Don't pass title - it's a Formula field
       problem, 
       rigId, 
-      rulePackKey,
+      undefined, // Don't pass rulePackKey here
       equipmentInstanceId,
-      failureMode
+      undefined // Don't pass failureMode here
     );
     return NextResponse.json({ ok: true, sessionId: id }, { status: 201 });
   } catch (e: any) {

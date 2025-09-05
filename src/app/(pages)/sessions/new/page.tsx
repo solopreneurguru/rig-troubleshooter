@@ -118,7 +118,7 @@ export default function NewSessionPage() {
       });
       const intake = await intakeRes.json().catch(() => null);
 
-      // If intake.packKey is falsy, show advanced and return early
+      // If intake.packKey falsy → open Advanced + hint and **return** (don't push).
       if (!intake?.packKey) {
         setShowAdvanced(true);
         setOverrideHint("I couldn't auto-select a rule pack. Please pick one.");
@@ -126,7 +126,7 @@ export default function NewSessionPage() {
         return; // DO NOT push to /sessions/[id]; return early
       }
 
-      // If intake.packKey exists, update session with RulePackKey and FailureMode
+      // If truthy → call /api/sessions/update with { RulePackKey: packKey, FailureMode } and read JSON.
       const updRes = await fetch("/api/sessions/update", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
@@ -137,7 +137,7 @@ export default function NewSessionPage() {
       });
       const upd = await updRes.json().catch(() => null);
       
-      // Read the JSON; if !ok, show alert and keep user on page with Advanced open
+      // If !ok → alert and keep Advanced open; **return**.
       if (!updRes.ok || !upd?.ok) {
         alert(`Failed to set RulePackKey: ${upd?.error || 'Unknown error'}`);
         setShowAdvanced(true);
@@ -146,7 +146,7 @@ export default function NewSessionPage() {
         return;
       }
 
-      // Only then router.push to /sessions/[id]
+      // Else → router.push(`/sessions/${sessionId}`);
       router.push(`/sessions/${sessionId}`);
     } catch (e) {
       alert("Failed to create session: " + e);
@@ -166,25 +166,24 @@ export default function NewSessionPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          Name: newEquipmentName,
-          SerialNumber: newEquipmentSerial || undefined,
-          EquipmentType: newEquipmentType ? [newEquipmentType] : undefined,
-          Rig: selectedRig ? [selectedRig.id] : undefined,
-          PLCProjectDoc: newEquipmentPLCProject || undefined,
-          Status: "Active"
+          name: newEquipmentName,
+          serial: newEquipmentSerial || undefined,
+          typeId: newEquipmentType || undefined,
+          rigId: selectedRig ? selectedRig.id : undefined,
+          plcDocId: newEquipmentPLCProject || undefined
         }),
       });
       
       const json = await res.json();
-      if (json.ok) {
-        setSelectedEquipmentInstance({ id: json.id, Name: newEquipmentName, SerialNumber: newEquipmentSerial });
+      if (res.ok && json.ok) {
+        setSelectedEquipmentInstance({ id: json.equipmentId, Name: newEquipmentName, SerialNumber: newEquipmentSerial });
         setShowEquipmentModal(false);
         setNewEquipmentName("");
         setNewEquipmentSerial("");
         setNewEquipmentType("");
         setNewEquipmentPLCProject("");
       } else {
-        alert(json.error || "Failed to create equipment instance");
+        alert("Failed to create equipment: " + (json.error || res.statusText));
       }
     } catch (e) {
       alert("Failed to create equipment instance: " + e);

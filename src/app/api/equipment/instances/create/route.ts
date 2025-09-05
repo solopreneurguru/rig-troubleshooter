@@ -6,27 +6,27 @@ export const runtime = "nodejs";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { Name, SerialNumber, EquipmentType, Rig, PLCProjectDoc, Status, Notes } = body || {};
+    const { name, rigId, typeId, serial, variantNotes, plcDocId, commissionedAt } = body || {};
     
-    if (!Name) {
+    if (!name) {
       return NextResponse.json({ ok: false, error: "Name is required" }, { status: 400 });
     }
     
     const id = await createEquipmentInstance({
-      Name,
-      SerialNumber,
-      EquipmentType,
-      Rig,
-      PLCProjectDoc,
-      Status,
-      Notes
+      name,
+      rigId,
+      typeId,
+      serial,
+      variantNotes,
+      plcDocId,
+      commissionedAt
     });
     
-    // Log field names for debugging
-    console.log("Equip create fields:", Object.keys({ Name, SerialNumber, EquipmentType, Rig, PLCProjectDoc, Status, Notes }));
+    // Safety log (temporary) - confirm we are not sending "Status" to EquipmentInstances
+    console.log("Equip create fields:", Object.keys({ name, rigId, typeId, serial, variantNotes, plcDocId, commissionedAt }));
     
     return NextResponse.json({ ok: true, equipmentId: id }, { status: 201 });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "unknown" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: e?.message ?? "unknown" }, { status: 400 });
   }
 }
