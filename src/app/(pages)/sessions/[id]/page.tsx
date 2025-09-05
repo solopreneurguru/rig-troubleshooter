@@ -48,6 +48,7 @@ export default function SessionWorkspace() {
   const [v2NodeKey, setV2NodeKey] = useState<string>("");
   const [v2Node, setV2Node] = useState<any>(null);
   const [systemMessagePosted, setSystemMessagePosted] = useState<boolean>(false);
+  const [rulePackKey, setRulePackKey] = useState<string>("");
   
   // Right rail state
   const [rr, setRR] = useState<{signals:any[]; testpoints:any[]; similar:any[]}>({signals:[],testpoints:[],similar:[]});
@@ -69,6 +70,7 @@ export default function SessionWorkspace() {
       const sessionRes = await fetch(`/api/sessions/${sessionId}`);
       const sessionData = await sessionRes.json();
       const rulePackKey = sessionData?.session?.RulePackKey;
+      setRulePackKey(rulePackKey || "");
       
       // Check if there are zero actions and post system message
       const actionsRes = await fetch(`/api/sessions/${sessionId}`);
