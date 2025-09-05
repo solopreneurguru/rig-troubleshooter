@@ -52,7 +52,7 @@ export default function NewSessionPage() {
   useEffect(() => {
     (async () => {
       try {
-        // Load rule packs
+        // Load rule packs (all packs for now, will filter by type when needed)
         const r = await fetch("/api/rulepacks/list");
         const j = await r.json();
         if (j.ok) setPacks(j.packs || []);
@@ -79,6 +79,80 @@ export default function NewSessionPage() {
       }
     })();
   }, []);
+
+  // Load filtered packs when equipment instance changes
+  useEffect(() => {
+    if (selectedEquipmentInstance?.EquipmentType?.[0]) {
+      (async () => {
+        try {
+          const equipmentType = selectedEquipmentInstance.EquipmentType![0];
+          const r = await fetch(`/api/rulepacks/list?type=${encodeURIComponent(equipmentType)}`);
+          const j = await r.json();
+          if (j.ok) {
+            // Only show .v2 packs
+            const v2Packs = j.packs.filter((pack: any) => pack.Key?.endsWith('.v2'));
+            setPacks(v2Packs);
+          }
+        } catch (e) {
+          console.log("Failed to load filtered packs:", e);
+        }
+      })();
+    }
+  }, [selectedEquipmentInstance]);
+
+  async function handleManualPackSelection() {
+    if (!rpKey || !problem.trim()) {
+      alert("Please select a rule pack and describe your issue");
+      return;
+    }
+    
+    setBusy(true);
+    try {
+      // Create session first
+      const res = await fetch("/api/sessions/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          rigName: selectedRig?.Name || rigName, 
+          problem, 
+          rulePackKey: rpKey,
+          equipmentInstanceId: selectedEquipmentInstance?.id
+        }),
+      });
+      
+      const json = await res.json();
+      if (!json.ok) {
+        alert(json.error || "Failed to create session");
+        setBusy(false);
+        return;
+      }
+      
+      const sessionId = json.sessionId;
+      
+      // Update session with the selected pack
+      const updRes = await fetch("/api/sessions/update", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ sessionId, fields: {
+          RulePackKey: rpKey
+        }})
+      });
+      const upd = await updRes.json().catch(() => null);
+      
+      if (!updRes.ok || !upd?.ok) {
+        alert(`Failed to set RulePackKey: ${upd?.error || 'Unknown error'}`);
+        setBusy(false);
+        return;
+      }
+
+      // Navigate to session
+      router.push(`/sessions/${sessionId}`);
+    } catch (e) {
+      alert("Failed to create session: " + e);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function createSession() {
     if (!problem.trim()) {
@@ -110,11 +184,16 @@ export default function NewSessionPage() {
       
       const sessionId = json.sessionId;
       
-      // 2) Call Symptom Router
+      // 2) Call Symptom Router with equipment type hint
+      const equipmentTypeHint = selectedEquipmentInstance?.EquipmentType?.[0];
       const intakeRes = await fetch("/api/intake/message", { 
         method:"POST", 
         headers:{ "Content-Type":"application/json" }, 
-        body: JSON.stringify({ sessionId, text: problem }) 
+        body: JSON.stringify({ 
+          sessionId, 
+          text: problem,
+          equipmentTypeHint 
+        }) 
       });
       const intake = await intakeRes.json().catch(() => null);
 
@@ -286,7 +365,9 @@ export default function NewSessionPage() {
             ) : (
               <select className="bg-zinc-900 text-zinc-100 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md px-3 py-2 w-full" value={rpKey} onChange={e=>setRpKey(e.target.value)}>
                 <option value="">Auto-select from problem description</option>
-                {packs.map((p:any) => <option key={p.id} value={p.Key}>{p.Key} ({p.EquipmentType || "Any"})</option>)}
+                {packs.filter((p:any) => p.Key?.endsWith('.v2')).map((p:any) => 
+                  <option key={p.id} value={p.Key}>{p.Key} ({p.EquipmentType || "Any"})</option>
+                )}
               </select>
             )}
             <div className="text-xs text-zinc-400 mt-2">
@@ -296,6 +377,15 @@ export default function NewSessionPage() {
               <div className="text-xs text-orange-600 mt-2 font-medium">
                 {overrideHint}
               </div>
+            )}
+            {rpKey && (
+              <button
+                onClick={handleManualPackSelection}
+                disabled={busy}
+                className="mt-2 px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50"
+              >
+                {busy ? "Processing..." : "Use Selected Pack"}
+              </button>
             )}
           </div>
         )}
@@ -309,7 +399,7 @@ export default function NewSessionPage() {
       <button 
         onClick={createSession} 
         disabled={busy || !problem.trim()} 
-        className="px-4 py-2 rounded bg-black text-white disabled:opacity-50"
+        className="px-4 py-2 rounded bg-black text-white disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {busy ? "Creating..." : "Create Session"}
       </button>

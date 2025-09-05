@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { listRulePacks, RulePackV2Schema } from "@/lib/rulepacks";
 export const runtime = "nodejs";
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const type = searchParams.get('type');
+    
     const packs = await listRulePacks();
     
-    // Add isV2 flag to each pack
+    // Add isV2 flag to each pack and filter
     const packsWithV2Flag = packs.map((pack: any) => {
       let isV2 = false;
       try {
@@ -24,7 +27,22 @@ export async function GET() {
       };
     });
     
-    return NextResponse.json({ ok: true, packs: packsWithV2Flag });
+    // Filter by type if provided
+    let filteredPacks = packsWithV2Flag;
+    if (type) {
+      filteredPacks = packsWithV2Flag.filter((pack: any) => 
+        pack.EquipmentType === type
+      );
+    }
+    
+    // Sort by Key ascending
+    filteredPacks.sort((a: any, b: any) => {
+      const keyA = a.Key || '';
+      const keyB = b.Key || '';
+      return keyA.localeCompare(keyB);
+    });
+    
+    return NextResponse.json({ ok: true, packs: filteredPacks });
   } catch (e:any) {
     return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
   }
