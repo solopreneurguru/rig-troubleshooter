@@ -28,6 +28,7 @@ const READING_FAIL = (process.env.AT_READING_FAIL_OPTION || RESULT_FAIL).trim();
 // Field name configuration
 const SESS_EQUIP_FIELD = process.env.SESSIONS_EQUIPMENT_FIELD || "EquipmentInstance";
 const EQI_TYPE_FIELD = process.env.EQUIPINSTANCES_TYPE_FIELD || "Type";
+export const SESSIONS_RULEPACK_FIELD = process.env.SESSIONS_RULEPACK_FIELD || "RulePackKey";
 
 if (!apiKey || !baseId) {
   console.warn("[airtable] Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID");
@@ -116,8 +117,6 @@ export async function createSession(
   failureMode?: string
 ) {
   const tbl = table(sessionsTableId);
-  const problemField = (process.env.SESSIONS_PROBLEM_FIELD || "Problem").trim();
-  const rpField = (process.env.SESSIONS_RULEPACK_FIELD || "RulePackKey").trim();
   
   // Build explicit whitelist object and sanitize
   const fields = sanitizeFields({
@@ -126,7 +125,7 @@ export async function createSession(
     Problem: problem || undefined,
     Status: "Open",
     FailureMode: failureMode || undefined,
-    RulePackKey: rulePackKey || undefined,
+    [SESSIONS_RULEPACK_FIELD]: rulePackKey || undefined,
     // DO NOT include Title - it's computed by Airtable formula
   });
   
@@ -586,6 +585,13 @@ async function airPatch(tableId: string, records: any[]) {
 export async function setSessionFields(sessionId: string, fields: any) {
   // Sanitize fields to block Formula/Computed or system-managed fields
   const safe = sanitizeFields(fields);
+  
+  // Map RulePackKey using SESSIONS_RULEPACK_FIELD if present
+  if (safe.RulePackKey !== undefined) {
+    safe[SESSIONS_RULEPACK_FIELD] = safe.RulePackKey;
+    delete safe.RulePackKey;
+  }
+  
   return airPatch(TB.SESSIONS, [{ id: sessionId, fields: safe }]);
 }
 

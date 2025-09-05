@@ -106,56 +106,10 @@ export default function NewSessionPage() {
       return;
     }
     
-    setBusy(true);
-    try {
-      // Create session first
-      const res = await fetch("/api/sessions/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          rigName: selectedRig?.Name || rigName, 
-          problem, 
-          equipmentInstanceId: selectedEquipmentInstance?.id
-        }),
-      });
-      
-      const json = await res.json();
-      if (!json.ok) {
-        alert(json.error || "Failed to create session");
-        setBusy(false);
-        return;
-      }
-      
-      const sessionId = json.sessionId;
-      
-      // Update session with the selected pack key only
-      const updRes = await fetch("/api/sessions/update", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ 
-          sessionId, 
-          RulePackKey: rpKey,
-          FailureMode: undefined // Don't send failure mode for manual selection
-        })
-      });
-      const upd = await updRes.json().catch(() => null);
-      
-      if (!updRes.ok || !upd?.ok) {
-        alert(`Failed to set RulePackKey: ${upd?.error || 'Unknown error'}`);
-        setBusy(false);
-        return;
-      }
-
-      // Keep the selected key in local state and enable "Create Session"
-      setRpKey(rpKey);
-      
-      // Navigate to session only after confirming the session write succeeded
-      router.push(`/sessions/${sessionId}`);
-    } catch (e) {
-      alert("Failed to create session: " + e);
-    } finally {
-      setBusy(false);
-    }
+    // When user clicks "Use Selected Pack", do NOT call update yet; just store the selected key in state
+    setRpKey(rpKey);
+    setShowAdvanced(false);
+    setOverrideHint("");
   }
 
   async function createSession() {
@@ -166,16 +120,33 @@ export default function NewSessionPage() {
     
     setBusy(true);
     try {
-      // 1) Create session first (existing endpoint)
+      // 1) Call Symptom Router with equipment type hint to try and auto-detect a pack key
+      const equipmentTypeHint = selectedEquipmentInstance?.EquipmentType?.[0];
+      const intakeRes = await fetch("/api/intake/message", { 
+        method:"POST", 
+        headers:{ "Content-Type":"application/json" }, 
+        body: JSON.stringify({ 
+          sessionId: "temp", // We'll create the session after intake
+          text: problem,
+          equipmentTypeHint 
+        }) 
+      });
+      const intake = await intakeRes.json().catch(() => null);
+
+      // 2) Prefer the user override if set; else use intake packKey if present
+      const chosenKey = rpKey || intake?.packKey;
+      const chosenFailureMode = intake?.failureMode;
+
+      // 3) POST to /api/sessions/create with { ..., RulePackKey: chosenKey }
       const res = await fetch("/api/sessions/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           rigName: selectedRig?.Name || rigName, 
           problem, 
-          rulePackKey: rpKey,
+          rulePackKey: chosenKey,
+          failureMode: chosenFailureMode,
           equipmentInstanceId: selectedEquipmentInstance?.id
-          // DO NOT include Title - it's computed by Airtable formula
         }),
       });
       
@@ -187,50 +158,8 @@ export default function NewSessionPage() {
       }
       
       const sessionId = json.sessionId;
-      
-      // 2) Call Symptom Router with equipment type hint
-      const equipmentTypeHint = selectedEquipmentInstance?.EquipmentType?.[0];
-      const intakeRes = await fetch("/api/intake/message", { 
-        method:"POST", 
-        headers:{ "Content-Type":"application/json" }, 
-        body: JSON.stringify({ 
-          sessionId, 
-          text: problem,
-          equipmentTypeHint 
-        }) 
-      });
-      const intake = await intakeRes.json().catch(() => null);
 
-      // If intake.packKey falsy → open Advanced + hint and **return** (don't push).
-      if (!intake?.packKey) {
-        setShowAdvanced(true);
-        setOverrideHint("I couldn't auto-select a rule pack. Please pick one.");
-        setBusy(false);
-        return; // DO NOT push to /sessions/[id]; return early
-      }
-
-      // If truthy → call /api/sessions/update with { RulePackKey: packKey, FailureMode } and read JSON.
-      const updRes = await fetch("/api/sessions/update", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ 
-          sessionId, 
-          RulePackKey: intake.packKey,
-          FailureMode: intake.failureMode ?? undefined
-        })
-      });
-      const upd = await updRes.json().catch(() => null);
-      
-      // If !ok → alert and keep Advanced open; **return**.
-      if (!updRes.ok || !upd?.ok) {
-        alert(`Failed to set RulePackKey: ${upd?.error || 'Unknown error'}`);
-        setShowAdvanced(true);
-        setOverrideHint("Failed to set rule pack. Please try again.");
-        setBusy(false);
-        return;
-      }
-
-      // Else → router.push(`/sessions/${sessionId}`);
+      // 4) Only navigate to /sessions/[id] after we get { ok:true }
       router.push(`/sessions/${sessionId}`);
     } catch (e) {
       alert("Failed to create session: " + e);

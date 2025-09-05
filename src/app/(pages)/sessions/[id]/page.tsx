@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
-import { FINDING_OUTCOMES } from "@/lib/airtable";
+import { FINDING_OUTCOMES, SESSIONS_RULEPACK_FIELD } from "@/lib/airtable";
 import { loadRightRailData } from "@/lib/air-find";
 import V2StepCard from "./V2StepCard";
 
@@ -74,7 +74,6 @@ export default function SessionWorkspace() {
       setStatus("Checking session type...");
       const sessionRes = await fetch(`/api/sessions/${sessionId}`);
       const sessionData = await sessionRes.json();
-      const SESSIONS_RULEPACK_FIELD = process.env.SESSIONS_RULEPACK_FIELD || "RulePackKey";
       const rulePackKeySeen = sessionData?.session?.[SESSIONS_RULEPACK_FIELD];
       setRulePackKey(rulePackKeySeen || "");
       
