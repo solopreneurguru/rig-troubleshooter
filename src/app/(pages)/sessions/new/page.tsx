@@ -30,6 +30,7 @@ export default function NewSessionPage() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [overrideHint, setOverrideHint] = useState("");
   
   // New state for equipment selection
   const [showRigModal, setShowRigModal] = useState(false);
@@ -107,31 +108,39 @@ export default function NewSessionPage() {
         return;
       }
       
-      const sessionId = json.id;
+      const sessionId = json.sessionId;
       
       // 2) Call Symptom Router
-      const intake = await fetch("/api/intake/message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, text: problem })
-      }).then(r => r.json());
-      
-      // 3) Write back RulePackKey and FailureMode if resolved
+      const intakeRes = await fetch("/api/intake/message", { 
+        method:"POST", 
+        headers:{ "Content-Type":"application/json" }, 
+        body: JSON.stringify({ sessionId, text: problem }) 
+      });
+      const intake = await intakeRes.json().catch(() => null);
+
       if (intake?.packKey || intake?.failureMode) {
-        await fetch("/api/sessions/update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId,
-            fields: {
-              ...(intake.packKey ? { RulePackKey: intake.packKey } : {}),
-              ...(intake.failureMode ? { FailureMode: intake.failureMode } : {})
-            }
-          })
+        const updRes = await fetch("/api/sessions/update", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({ sessionId, fields: {
+            ...(intake.packKey ? { RulePackKey: intake.packKey } : {}),
+            ...(intake.failureMode ? { FailureMode: intake.failureMode } : {})
+          }})
         });
+        const upd = await updRes.json().catch(() => null);
+        if (!updRes.ok || !upd?.ok) {
+          console.warn("sessions/update failed", upd);
+          // fallthrough to Advanced override
+        }
       }
-      
-      // 4) Navigate to workspace
+
+      // Fallback if no packKey
+      if (!intake?.packKey) {
+        setShowAdvanced(true); // open the override UI
+        setOverrideHint("I couldn't auto-select a rule pack. Please pick one.");
+        return; // keep the user on /sessions/new
+      }
+
       router.push(`/sessions/${sessionId}`);
     } catch (e) {
       alert("Failed to create session: " + e);
@@ -185,7 +194,7 @@ export default function NewSessionPage() {
         <label className="block text-sm font-medium">Rig</label>
         <div className="flex gap-2">
           <input 
-            className="flex-1 border rounded p-2" 
+            className="bg-zinc-900 text-zinc-100 placeholder:text-zinc-500 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md px-3 py-2 flex-1" 
             placeholder="Rig Name (optional)" 
             value={selectedRig?.Name || rigName} 
             onChange={e=>setRigName(e.target.value)} 
@@ -199,11 +208,11 @@ export default function NewSessionPage() {
           </button>
         </div>
         {selectedRig && (
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-zinc-400">
             Selected: {selectedRig.Name} {selectedRig.Type && `(${selectedRig.Type})`}
             <button 
               onClick={() => setSelectedRig(null)}
-              className="ml-2 text-red-600 underline"
+              className="ml-2 text-red-400 underline"
             >
               Clear
             </button>
@@ -216,7 +225,7 @@ export default function NewSessionPage() {
         <label className="block text-sm font-medium">Equipment Instance</label>
         <div className="flex gap-2">
           <input 
-            className="flex-1 border rounded p-2" 
+            className="bg-zinc-900 text-zinc-100 placeholder:text-zinc-500 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md px-3 py-2 flex-1" 
             placeholder="Equipment Instance" 
             value={selectedEquipmentInstance?.Name || ""} 
             disabled={true}
@@ -229,12 +238,12 @@ export default function NewSessionPage() {
           </button>
         </div>
         {selectedEquipmentInstance && (
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-zinc-400">
             Selected: {selectedEquipmentInstance.Name} 
             {selectedEquipmentInstance.SerialNumber && ` (S/N: ${selectedEquipmentInstance.SerialNumber})`}
             <button 
               onClick={() => setSelectedEquipmentInstance(null)}
-              className="ml-2 text-red-600 underline"
+              className="ml-2 text-red-400 underline"
             >
               Clear
             </button>
@@ -246,7 +255,7 @@ export default function NewSessionPage() {
       <div className="space-y-2">
         <label className="block text-sm font-medium">Problem Description *</label>
         <textarea 
-          className="w-full border rounded p-2" 
+          className="bg-zinc-900 text-zinc-100 placeholder:text-zinc-500 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md px-3 py-2 w-full" 
           rows={4} 
           placeholder="Describe your issue and equipment in detail..." 
           value={problem} 
@@ -266,22 +275,27 @@ export default function NewSessionPage() {
           </button>
         </div>
         {showAdvanced && (
-          <div className="border rounded p-3 bg-gray-50">
+          <div className="bg-zinc-900 text-zinc-100 border border-zinc-800 rounded-2xl p-3">
             {loading ? (
               <div className="text-center py-4">Loading Rule Packs...</div>
             ) : (
-              <select className="w-full border rounded p-2" value={rpKey} onChange={e=>setRpKey(e.target.value)}>
+              <select className="bg-zinc-900 text-zinc-100 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md px-3 py-2 w-full" value={rpKey} onChange={e=>setRpKey(e.target.value)}>
                 <option value="">Auto-select from problem description</option>
                 {packs.map((p:any) => <option key={p.id} value={p.Key}>{p.Key} ({p.EquipmentType || "Any"})</option>)}
               </select>
             )}
-            <div className="text-xs text-gray-600 mt-2">
+            <div className="text-xs text-zinc-400 mt-2">
               Leave empty to auto-select based on problem description and equipment type.
             </div>
+            {overrideHint && (
+              <div className="text-xs text-orange-600 mt-2 font-medium">
+                {overrideHint}
+              </div>
+            )}
           </div>
         )}
         {!showAdvanced && (
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-zinc-400">
             Rule pack will be auto-selected from problem description
           </div>
         )}
@@ -298,7 +312,7 @@ export default function NewSessionPage() {
       {/* Rig Selection Modal */}
       {showRigModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-md w-full max-h-96 overflow-y-auto">
+          <div className="bg-zinc-900 text-zinc-100 border border-zinc-800 shadow-xl rounded-2xl p-6 max-w-md w-full max-h-96 overflow-y-auto">
             <h3 className="text-lg font-bold mb-4">Select Rig</h3>
             <div className="space-y-2">
               {rigs.map((rig) => (
@@ -308,16 +322,16 @@ export default function NewSessionPage() {
                     setSelectedRig(rig);
                     setShowRigModal(false);
                   }}
-                  className="w-full text-left p-2 border rounded hover:bg-gray-50"
+                  className="w-full text-left p-2 border border-zinc-700 rounded hover:bg-zinc-800 text-zinc-100"
                 >
                   <div className="font-medium">{rig.Name}</div>
-                  {rig.Type && <div className="text-sm text-gray-600">{rig.Type}</div>}
+                  {rig.Type && <div className="text-sm text-zinc-400">{rig.Type}</div>}
                 </button>
               ))}
             </div>
             <button 
               onClick={() => setShowRigModal(false)}
-              className="mt-4 px-4 py-2 border rounded"
+              className="mt-4 px-4 py-2 border border-zinc-700 rounded bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
             >
               Cancel
             </button>
@@ -328,7 +342,7 @@ export default function NewSessionPage() {
       {/* Equipment Instance Modal */}
       {showEquipmentModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-md w-full max-h-96 overflow-y-auto">
+          <div className="bg-zinc-900 text-zinc-100 border border-zinc-800 shadow-xl rounded-2xl p-6 max-w-md w-full max-h-96 overflow-y-auto">
             <h3 className="text-lg font-bold mb-4">Select or Create Equipment Instance</h3>
             
             {/* Existing Equipment Instances */}
@@ -342,10 +356,10 @@ export default function NewSessionPage() {
                       setSelectedEquipmentInstance(instance);
                       setShowEquipmentModal(false);
                     }}
-                    className="w-full text-left p-2 border rounded hover:bg-gray-50"
+                    className="w-full text-left p-2 border border-zinc-700 rounded hover:bg-zinc-800 text-zinc-100"
                   >
                     <div className="font-medium">{instance.Name}</div>
-                    {instance.SerialNumber && <div className="text-sm text-gray-600">S/N: {instance.SerialNumber}</div>}
+                    {instance.SerialNumber && <div className="text-sm text-zinc-400">S/N: {instance.SerialNumber}</div>}
                   </button>
                 ))}
               </div>
@@ -356,19 +370,19 @@ export default function NewSessionPage() {
               <h4 className="font-medium mb-2">Create New Equipment:</h4>
               <div className="space-y-2">
                 <input
-                  className="w-full border rounded p-2"
+                  className="bg-zinc-900 text-zinc-100 placeholder:text-zinc-500 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md px-3 py-2 w-full"
                   placeholder="Equipment Name *"
                   value={newEquipmentName}
                   onChange={e => setNewEquipmentName(e.target.value)}
                 />
                 <input
-                  className="w-full border rounded p-2"
+                  className="bg-zinc-900 text-zinc-100 placeholder:text-zinc-500 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md px-3 py-2 w-full"
                   placeholder="Serial Number (optional)"
                   value={newEquipmentSerial}
                   onChange={e => setNewEquipmentSerial(e.target.value)}
                 />
                 <select
-                  className="w-full border rounded p-2"
+                  className="bg-zinc-900 text-zinc-100 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md px-3 py-2 w-full"
                   value={newEquipmentType}
                   onChange={e => setNewEquipmentType(e.target.value)}
                 >
@@ -378,7 +392,7 @@ export default function NewSessionPage() {
                   ))}
                 </select>
                 <input
-                  className="w-full border rounded p-2"
+                  className="bg-zinc-900 text-zinc-100 placeholder:text-zinc-500 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md px-3 py-2 w-full"
                   placeholder="PLC Project Doc Link (optional)"
                   value={newEquipmentPLCProject}
                   onChange={e => setNewEquipmentPLCProject(e.target.value)}
@@ -395,7 +409,7 @@ export default function NewSessionPage() {
             
             <button 
               onClick={() => setShowEquipmentModal(false)}
-              className="mt-4 px-4 py-2 border rounded"
+              className="mt-4 px-4 py-2 border border-zinc-700 rounded bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
             >
               Cancel
             </button>

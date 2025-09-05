@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     });
     
     // TEMP debug log (remove later)
-    console.log("sessions/create fields keys:", Object.keys(fields));
+    console.log("create fields:", Object.keys(fields));
     
     // Ensure "Title" never appears in the fields
     if ("Title" in fields) {
@@ -48,8 +48,8 @@ export async function POST(req: Request) {
       equipmentInstanceId,
       failureMode
     );
-    return NextResponse.json({ ok: true, id });
+    return NextResponse.json({ ok: true, sessionId: id }, { status: 201 });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
+    return NextResponse.json({ ok: false, error: e?.message ?? "unknown" }, { status: 500 });
   }
 }

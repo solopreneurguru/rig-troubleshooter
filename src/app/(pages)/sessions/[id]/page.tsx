@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { FINDING_OUTCOMES } from "@/lib/airtable";
+import { loadRightRailData } from "@/lib/air-find";
+import V2StepCard from "./V2StepCard";
 
 type Step = { 
   key: string; 
@@ -22,6 +24,7 @@ type Tech = {
 export default function SessionWorkspace() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const sessionId = params.id as string;
   const debugSafety = searchParams.get('debug') === 'safety';
   
@@ -39,6 +42,15 @@ export default function SessionWorkspace() {
   const [fSummary, setFSummary] = useState("");
   const [fParts, setFParts] = useState("");
   const [reportURL, setReportURL] = useState("");
+  
+  // V2 state
+  const [isV2, setIsV2] = useState<boolean>(false);
+  const [v2NodeKey, setV2NodeKey] = useState<string>("");
+  const [v2Node, setV2Node] = useState<any>(null);
+  const [systemMessagePosted, setSystemMessagePosted] = useState<boolean>(false);
+  
+  // Right rail state
+  const [rr, setRR] = useState<{signals:any[]; testpoints:any[]; similar:any[]}>({signals:[],testpoints:[],similar:[]});
 
   useEffect(() => {
     // Load tech from localStorage
@@ -52,28 +64,80 @@ export default function SessionWorkspace() {
     }
 
     const init = async () => {
-      setStatus("Fetching first step...");
-      const res = await fetch("/api/plan/next", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          sessionId, 
-          order: 1,
-          debug: debugSafety ? 'safety' : undefined
-        }),
-      });
-      const json = await res.json();
-      if (json.ok) { 
-        setActionId(json.actionId); 
-        setStep(json.step); 
-        setOrder(json.order); 
-        setStatus(""); 
+      // First, check if this is a v2 session
+      setStatus("Checking session type...");
+      const sessionRes = await fetch(`/api/sessions/${sessionId}`);
+      const sessionData = await sessionRes.json();
+      const rulePackKey = sessionData?.session?.RulePackKey;
+      
+      // Check if there are zero actions and post system message
+      const actionsRes = await fetch(`/api/sessions/${sessionId}`);
+      const actionsData = await actionsRes.json();
+      const actionCount = actionsData?.actions?.length || 0;
+      
+      if (actionCount === 0) {
+        await postSystemMessage(sessionData);
+      }
+      
+      if (rulePackKey?.endsWith(".v2")) {
+        setIsV2(true);
+        setStatus("Loading v2 step...");
+        
+        const res = await fetch("/api/plan/v2/next", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+        });
+        const json = await res.json();
+        if (json.ok) {
+          setV2NodeKey(json.nodeKey);
+          setV2Node(json.node);
+          setStatus("");
+        } else {
+          setStatus(json.error || "Failed to fetch v2 step");
+        }
       } else {
-        setStatus(json.error || "Failed to fetch first step");
+        // V1 session
+        setIsV2(false);
+        setStatus("Fetching first step...");
+        const res = await fetch("/api/plan/next", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            sessionId, 
+            order: 1,
+            debug: debugSafety ? 'safety' : undefined
+          }),
+        });
+        const json = await res.json();
+        if (json.ok) { 
+          setActionId(json.actionId); 
+          setStep(json.step); 
+          setOrder(json.order); 
+          setStatus(""); 
+        } else {
+          setStatus(json.error || "Failed to fetch first step");
+        }
       }
     };
     init();
   }, [sessionId, debugSafety]);
+
+  // Load right-rail data
+  useEffect(() => {
+    // fetch session to get EquipmentInstance + FailureMode (adapt to your data flow)
+    (async () => {
+      try {
+        const s = await fetch(`/api/sessions/${sessionId}`).then(r=>r.json());
+        const equipId = s?.session?.EquipmentInstance?.[0];
+        const failureMode = s?.session?.FailureMode;
+        const data = await loadRightRailData({ equipmentId: equipId, failureMode });
+        setRR(data);
+      } catch (e) {
+        console.log("Failed to load right-rail data:", e);
+      }
+    })();
+  }, [sessionId]);
 
   async function submit() {
     if (!step) return;
@@ -144,15 +208,68 @@ export default function SessionWorkspace() {
     }
   }
 
+  async function handleV2Submitted() {
+    // Refresh the page to get the next step
+    router.refresh();
+  }
+
+  async function postSystemMessage(sessionData: any) {
+    if (systemMessagePosted) return;
+    
+    try {
+      const equipmentName = sessionData?.session?.EquipmentInstance?.[0] ? 
+        await fetch(`/api/equipment/instances/${sessionData.session.EquipmentInstance[0]}`)
+          .then(r => r.json())
+          .then(data => data.instance?.Name || "Unknown Equipment")
+          .catch(() => "Unknown Equipment") : "Unknown Equipment";
+      
+      const failureMode = sessionData?.session?.FailureMode || "Unknown Issue";
+      
+      const message = `I interpreted this as ${equipmentName} / ${failureMode}. I'll start with document intake then first checks.`;
+      
+      await fetch("/api/intake/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          sessionId, 
+          text: message,
+          isSystem: true 
+        })
+      });
+      
+      setSystemMessagePosted(true);
+    } catch (e) {
+      console.log("Failed to post system message:", e);
+    }
+  }
+
   return (
-    <main className="p-6 max-w-2xl space-y-4">
-      <h1 className="text-2xl font-bold">Session {sessionId}</h1>
-      {debugSafety && (
-        <div className="rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm">
-          <strong>🔧 Debug Mode:</strong> Showing safety gate step directly
-        </div>
-      )}
-      {step ? (
+    <div className="grid grid-cols-12 gap-4 p-6">
+      <div className="col-span-8 space-y-4">
+        <h1 className="text-2xl font-bold">Session {sessionId}</h1>
+        
+        {/* Safety Banner - Always visible when action requires confirmation */}
+        {step?.requireConfirm && (
+          <div className="rounded-lg border border-amber-400 bg-amber-50 text-amber-900 dark:bg-amber-200 dark:text-amber-900 px-4 py-3">
+            <strong className="font-medium">⚠️ Safety Confirmation Required:</strong> This action requires safety confirmation before proceeding.
+          </div>
+        )}
+        
+        {debugSafety && (
+          <div className="rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm">
+            <strong>🔧 Debug Mode:</strong> Showing safety gate step directly
+          </div>
+        )}
+        
+        {/* V2 Session Render */}
+        {isV2 && v2Node ? (
+          <V2StepCard 
+            sessionId={sessionId}
+            nodeKey={v2NodeKey}
+            node={v2Node}
+            onSubmitted={handleV2Submitted}
+          />
+        ) : !isV2 && step ? (
         <div className="rounded-xl border p-4 space-y-2">
           <div className="text-sm opacity-70">Step key: {step.key} • Order {order}</div>
           <p className="text-base">{step.instruction}</p>
@@ -247,12 +364,12 @@ export default function SessionWorkspace() {
             </button>
           </div>
         </div>
-      ) : (
-        <div className="rounded-xl border p-4">
-          No active step. {status || "Start a new session or refresh."}
-        </div>
-      )}
-      {(!step) && (
+        ) : (
+          <div className="rounded-xl border p-4">
+            No active step. {status || "Start a new session or refresh."}
+          </div>
+        )}
+      {(!step && !v2Node) && (
         <div className="rounded-xl border p-4 space-y-2">
           <h2 className="font-semibold">Create Finding & Report</h2>
           <input 
@@ -298,9 +415,50 @@ export default function SessionWorkspace() {
         </div>
       )}
       {status && <p className="text-sm">{status}</p>}
-      <div className="mt-6 rounded-xl border border-amber-400 bg-amber-50 text-amber-900 dark:bg-amber-200 dark:text-amber-900 px-4 py-3">
-        <strong className="font-medium">Safety First:</strong> Follow LOTO and OEM procedures. Do not energize/override interlocks unless authorized and safe.
+        <div className="mt-6 rounded-xl border border-amber-400 bg-amber-50 text-amber-900 dark:bg-amber-200 dark:text-amber-900 px-4 py-3">
+          <strong className="font-medium">Safety First:</strong> Follow LOTO and OEM procedures. Do not energize/override interlocks unless authorized and safe.
+        </div>
       </div>
-    </main>
+      
+      <aside className="col-span-4 space-y-4">
+        <section>
+          <h3 className="font-semibold">Docs / Test Points</h3>
+          <ul className="text-sm">
+            {rr.testpoints.map(tp => (
+              <li key={tp.id}>
+                <div className="font-medium">{tp.fields.Label} <span className="opacity-60">→ {tp.fields.Reference}</span></div>
+                {tp.fields.Nominal != null && <div>Nominal: {tp.fields.Nominal} {tp.fields.Unit || ""}</div>}
+                {tp.fields.DocRef?.length && tp.fields.DocPage != null && (
+                  <div className="text-xs opacity-70">Ref: doc#{tp.fields.DocRef[0]} p.{tp.fields.DocPage}</div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section>
+          <h3 className="font-semibold">Signals</h3>
+          <ul className="text-sm">
+            {rr.signals.map(sig => (
+              <li key={sig.id}>
+                <div className="font-medium">{sig.fields.Tag}</div>
+                <div className="text-xs opacity-70">{sig.fields.Address} {sig.fields.Unit ? `• ${sig.fields.Unit}` : ""}</div>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section>
+          <h3 className="font-semibold">Similar Cases</h3>
+          <ul className="text-sm">
+            {rr.similar.map(f => (
+              <li key={f.id}>
+                <div className="font-medium">{f.fields.Title || "Finding"}</div>
+                <div className="text-xs opacity-70">{f.fields.FailureMode || ""}</div>
+                {f.fields.ReportURL && <a className="underline" href={f.fields.ReportURL} target="_blank">Report</a>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      </aside>
+    </div>
   );
 }
