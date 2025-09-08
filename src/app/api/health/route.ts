@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { listRulePacks } from "@/lib/airtable";
+import { isV2Pack } from "@/lib/rulepacks";
 
 const ENV_KEYS = [
   "AIRTABLE_API_KEY",
@@ -31,14 +32,15 @@ export async function GET() {
     airtableOk = false;
   }
 
-  const v2Count = (packs || []).filter(p => p && (p as any).isV2).length;
+  const total = Array.isArray(packs) ? packs.length : 0;
+  const v2 = Array.isArray(packs) ? packs.filter(isV2Pack).length : 0;
   const ok = env["AIRTABLE_API_KEY"] && airtableOk;
 
   return NextResponse.json({
     ok: !!ok,
     env,
     airtableOk,
-    rulepacks: { total: packs.length, v2: v2Count },
+    rulepacks: { total, v2 },
     notes: "ok=true means env + Airtable reachable. rulepacks counts only consider Active packs.",
   });
 }

@@ -314,3 +314,43 @@ export async function simulateRulePack(rulePack: RulePackV2, path: Array<{value:
   
   return { finalNodeKey, steps };
 }
+
+// --- Robust v2 detection helpers ---
+export type AnyRecord = Record<string, any>;
+
+export function safeJsonParse<T = any>(v: unknown): T | undefined {
+  if (typeof v === 'object' && v !== null) return v as T;
+  if (typeof v === 'string' && v.trim()) {
+    try { return JSON.parse(v) as T; } catch { /* ignore */ }
+  }
+  return undefined;
+}
+
+export function getKey(rec: AnyRecord): string | undefined {
+  return (rec.key ?? rec.Key ?? rec.fields?.key ?? rec.fields?.Key) as string | undefined;
+}
+
+export function getVersion(rec: AnyRecord): number | undefined {
+  const v = rec.version ?? rec.Version ?? rec.fields?.version ?? rec.fields?.Version;
+  return typeof v === 'number' ? v : (typeof v === 'string' ? Number(v) : undefined);
+}
+
+export function getJson(rec: AnyRecord): AnyRecord | undefined {
+  const raw = rec.json ?? rec.Json ?? rec.fields?.json ?? rec.fields?.Json;
+  return safeJsonParse(raw);
+}
+
+/** Robust v2 detection:
+ *  - explicit Version === 2 OR
+ *  - Json.version === 2 OR
+ *  - Key endsWith(".v2")
+ */
+export function isV2Pack(rec: AnyRecord): boolean {
+  const key = getKey(rec);
+  const ver = getVersion(rec);
+  if (ver === 2) return true;
+  const json = getJson(rec);
+  if (json?.version === 2) return true;
+  if (typeof key === 'string' && /\.v2$/.test(key)) return true;
+  return false;
+}

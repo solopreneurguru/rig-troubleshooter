@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { FINDING_OUTCOMES, SESSIONS_RULEPACK_FIELD } from "@/lib/airtable";
 import { loadRightRailData } from "@/lib/air-find";
+import { isV2Pack } from "@/lib/rulepacks";
 import V2StepCard from "./V2StepCard";
 
 type Step = { 
@@ -291,11 +292,11 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
           <div className="mb-4 rounded-md border border-yellow-700 bg-yellow-900/30 p-3 text-yellow-100">
             <div className="font-semibold">Select Rule Pack (.v2)</div>
             <div className="text-sm opacity-80 mb-2">No rule pack selected. Pick a v2 pack below.</div>
-            {!packs || packs.filter(p => p.isV2).length === 0 ? (
+            {!packs || packs.filter(isV2Pack).length === 0 ? (
               <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm text-yellow-100">
                 No v2 packs found for this equipment. 
                 <div className="mt-1 opacity-80">
-                  Tip: You can still proceed by selecting a different pack, or (owner) seed a demo pack using the admin token endpoint.
+                  Tip: Owner can seed a demo v2 pack via the admin-token endpoint if needed.
                 </div>
               </div>
             ) : (
@@ -306,7 +307,7 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
                   onChange={e => setPendingPack(e.target.value)}
                 >
                   <option value="">— choose a v2 pack —</option>
-                  {packs.filter(p => p.isV2).map(p => (
+                  {packs.filter(isV2Pack).map(p => (
                     <option key={p.key} value={p.key}>{p.key}</option>
                   ))}
                 </select>
