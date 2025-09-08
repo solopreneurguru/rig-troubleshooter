@@ -355,6 +355,15 @@ export function isV2Pack(rec: AnyRecord): boolean {
   return false;
 }
 
+// List all active v2 packs (for fallback UI)
+export async function listActiveV2PacksAll(): Promise<any[]> {
+  const packs = await listRulePacks(); // existing function
+  return packs.filter(isV2Pack).filter(p => {
+    const active = (p?.fields?.Active ?? p?.Active ?? false) as boolean;
+    return !!active;
+  });
+}
+
 // Upsert RulePack by key (create or update)
 export async function upsertRulePackByKey(key: string, pack: any): Promise<{ action: string; id: string }> {
   const tbl = table(rpTableId);

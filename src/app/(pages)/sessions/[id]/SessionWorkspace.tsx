@@ -58,6 +58,11 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
   const [packs, setPacks] = useState<Array<{key:string; isV2:boolean; equipmentTypeName?:string}>>([]);
   const [pendingPack, setPendingPack] = useState<string>("");
   
+  // Fallback UI state
+  const [showAll, setShowAll] = useState(false);
+  const [allV2, setAllV2] = useState<any[]|null>(null);
+  const [attachId, setAttachId] = useState<string>("");
+  
   // Right rail state
   const [rr, setRR] = useState<{signals:any[]; testpoints:any[]; similar:any[]}>({signals:[],testpoints:[],similar:[]});
 
@@ -295,11 +300,47 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
             <div className="font-semibold">Select Rule Pack (.v2)</div>
             <div className="text-sm opacity-80 mb-2">No rule pack selected. Pick a v2 pack below.</div>
             {!packs || packs.filter(isV2Pack).length === 0 ? (
-              <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm text-yellow-100">
-                No v2 packs found for this equipment. 
-                <div className="mt-1 opacity-80">
-                  Tip: Owner can seed a demo v2 pack via the admin-token endpoint if needed.
+              <div className="rounded p-3 bg-amber-900/30 border border-amber-800">
+                <div className="mb-2 text-amber-200">No v2 packs found for this equipment.</div>
+                <div className="text-xs mb-3 opacity-80">
+                  Tip: this can happen if EQUIPINSTANCES_TYPE_FIELD isn't set. You can still attach any active v2 pack below.
                 </div>
+                {!showAll ? (
+                  <button type="button" className="px-3 py-1 rounded bg-neutral-700" onClick={async () => {
+                    setShowAll(true);
+                    try {
+                      const res = await fetch("/api/rulepacks/all-v2"); // see Step 3
+                      const json = await res.json();
+                      setAllV2(json?.packs ?? []);
+                    } catch {}
+                  }}>
+                    Show all v2 packs
+                  </button>
+                ) : (
+                  <div className="flex gap-2 items-center">
+                    <select className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1"
+                      value={attachId} onChange={(e)=>setAttachId(e.target.value)}>
+                      <option value="">— choose a v2 pack —</option>
+                      {(allV2 ?? []).map((p)=>(
+                        <option key={p.id} value={p.fields?.Key || p.Key}>
+                          {p.fields?.Key || p.Key}
+                        </option>
+                      ))}
+                    </select>
+                    <button type="button" className="px-3 py-1 rounded bg-blue-600 disabled:opacity-60"
+                      disabled={!attachId}
+                      onClick={async ()=>{
+                        const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/rulepack`, {
+                          method:"POST", headers:{ "content-type":"application/json" },
+                          body: JSON.stringify({ key: attachId })
+                        });
+                        const j = await resp.json().catch(()=> ({}));
+                        if (resp.ok && j?.ok) { window.location.reload(); } // re-hydrate step runner
+                      }}>
+                      Attach
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex gap-2 items-center">
