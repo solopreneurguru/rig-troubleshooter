@@ -20,17 +20,32 @@ function RigPickerModal({
 
   useEffect(() => {
     if (!open) return;
+    
     setLoading(true);
     setError(null);
-    fetch("/api/rigs/list")
+    
+    // 10s timeout via AbortController
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
+    fetch("/api/rigs/list", { signal: controller.signal })
       .then(async (r) => {
         const j = await r.json().catch(() => ({}));
         if (!r.ok || !j?.ok) throw new Error(j?.error || `HTTP ${r.status}`);
         return j.rigs as RigRow[];
       })
       .then((list) => setRigs(Array.isArray(list) ? list : []))
-      .catch((e) => setError(e.message || String(e)))
-      .finally(() => setLoading(false));
+      .catch((e) => {
+        if (e.name === 'AbortError') {
+          setError("Request timed out - please try again");
+        } else {
+          setError(e.message || String(e));
+        }
+      })
+      .finally(() => {
+        clearTimeout(timeoutId);
+        setLoading(false);
+      });
   }, [open]);
 
   if (!open) return null;
@@ -44,11 +59,7 @@ function RigPickerModal({
 
         {!loading && error && (
           <div className="text-sm text-red-400">
-            Failed to load rigs: {error}
-            <div className="mt-2 text-xs text-neutral-400">
-              Check Airtable Rigs table or try again. (Owner can verify{' '}
-              <code>/api/rigs/list</code> directly.)
-            </div>
+            Unable to load rigs. Please try again. [details: {error}]
           </div>
         )}
 
@@ -122,6 +133,11 @@ export default function NewSessionPage() {
   const [selectedEquipmentInstance, setSelectedEquipmentInstance] = useState<EquipmentInstance | null>(null);
   const [equipmentTypes, setEquipmentTypes] = useState<EquipmentType[]>([]);
   const [equipmentInstances, setEquipmentInstances] = useState<EquipmentInstance[]>([]);
+  
+  // Additional state for rig/equipment selection
+  const [selectedRigId, setSelectedRigId] = useState<string>("");
+  const [selectedRigName, setSelectedRigName] = useState<string>("");
+  const [selectedTypeName, setSelectedTypeName] = useState<string>("");
   
   // New equipment instance creation
   const [newEquipmentName, setNewEquipmentName] = useState("");
@@ -197,26 +213,34 @@ export default function NewSessionPage() {
     setEquipmentCreating(true);
     setEquipmentCreateError(null);
     
+    // 15s timeout via AbortController
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
     try {
+      const body = { 
+        name: newEquipmentName, 
+        rigId: selectedRigId || undefined,
+        rigName: selectedRigName || undefined,
+        typeName: selectedTypeName || undefined,
+        serial: newEquipmentSerial || undefined,
+        plcDocUrl: newEquipmentPLCProject || undefined
+      };
+      
       const res = await fetch("/api/equipment/instances/create", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ 
-          name: newEquipmentName, 
-          rigName: rigName || undefined,
-          typeName: equipmentTypes.find(t => t.id === newEquipmentType)?.Name || undefined
-        }),
+        body: JSON.stringify(body),
+        signal: controller.signal,
       });
       
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) {
-        setEquipmentCreateError(json?.error || `Create failed (${res.status})`);
-        setEquipmentCreating(false);
-        return;
+        throw new Error(json?.error || `HTTP ${res.status}`);
       }
       
       // Success — reflect selection in parent state
-      setSelectedEquipmentInstance({ id: json.id, Name: newEquipmentName, SerialNumber: newEquipmentSerial });
+      setSelectedEquipmentInstance({ id: json.id, Name: json.name || newEquipmentName, SerialNumber: newEquipmentSerial });
       setEquipmentCreating(false);
       // Close modal
       setShowEquipmentModal(false);
@@ -225,8 +249,14 @@ export default function NewSessionPage() {
       setNewEquipmentType("");
       setNewEquipmentPLCProject("");
     } catch (e: any) {
-      setEquipmentCreateError(e?.message || "Network error");
+      if (e.name === 'AbortError') {
+        setEquipmentCreateError("Request timed out - please try again");
+      } else {
+        setEquipmentCreateError(e?.message || "Network error");
+      }
       setEquipmentCreating(false);
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
@@ -289,7 +319,10 @@ export default function NewSessionPage() {
       
       {/* Problem Description */}
       <div className="space-y-2">
-        <SessionCreateForm />
+        <SessionCreateForm 
+          rigId={selectedRigId}
+          equipmentId={selectedEquipmentInstance?.id}
+        />
       </div>
       
       {/* Advanced Rule Pack Selection */}
@@ -328,6 +361,8 @@ export default function NewSessionPage() {
         onClose={() => setShowRigModal(false)}
         onPick={(rig) => {
           setRigName(rig.name);
+          setSelectedRigId(rig.id);
+          setSelectedRigName(rig.name);
         }}
       />
       
@@ -376,7 +411,11 @@ export default function NewSessionPage() {
                 <select
                   className="bg-zinc-900 text-zinc-100 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md px-3 py-2 w-full"
                   value={newEquipmentType}
-                  onChange={e => setNewEquipmentType(e.target.value)}
+                  onChange={e => {
+                    setNewEquipmentType(e.target.value);
+                    const selectedType = equipmentTypes.find(t => t.id === e.target.value);
+                    setSelectedTypeName(selectedType?.Name || "");
+                  }}
                 >
                   <option value="">Select Equipment Type (optional)</option>
                   {equipmentTypes.map((type) => (

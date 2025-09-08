@@ -11,11 +11,20 @@ async function jfetch(path: string, opts?: RequestInit) {
 }
 
 export default function DevPage() {
-  if (isProd) return <div className="p-6">Disabled in production.</div>;
   const [out, setOut] = useState<any>(null);
+  const [token, setToken] = useState<string>("");
 
   async function seedPlus() {
-    const r = await jfetch('/api/dev/seed/v2-pack-plus', { method: 'POST' });
+    const headers: Record<string, string> = {};
+    if (isProd) {
+      const storedToken = localStorage.getItem('ADMIN_DEV_TOKEN') || token;
+      if (!storedToken) {
+        setOut({ error: "Token required in production. Set ADMIN_DEV_TOKEN first." });
+        return;
+      }
+      headers.Authorization = `Bearer ${storedToken}`;
+    }
+    const r = await jfetch('/api/dev/seed/v2-pack-plus', { method: 'POST', headers });
     setOut({ route: '/api/dev/seed/v2-pack-plus', ...r });
   }
 
@@ -92,8 +101,35 @@ export default function DevPage() {
   return (
     <div className="p-6 space-y-4">
       <h1 className="text-xl font-bold">Dev Panel</h1>
+      
+      {isProd && (
+        <div className="space-y-2">
+          <label className="block text-sm font-medium">Admin Token (Production)</label>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={token}
+              onChange={e => setToken(e.target.value)}
+              placeholder="Enter ADMIN_DEV_TOKEN"
+              className="flex-1 px-3 py-2 border rounded bg-neutral-900 text-neutral-100"
+            />
+            <button
+              onClick={() => {
+                if (token) {
+                  localStorage.setItem('ADMIN_DEV_TOKEN', token);
+                  setOut({ message: "Token saved to localStorage" });
+                }
+              }}
+              className="px-3 py-2 bg-blue-600 text-white rounded"
+            >
+              Save Token
+            </button>
+          </div>
+        </div>
+      )}
+      
       <div className="flex flex-wrap gap-2">
-        <button className="rounded bg-black text-white px-3 py-2" onClick={seedPlus}>Seed v2-pack-plus</button>
+        <button className="rounded bg-black text-white px-3 py-2" onClick={seedPlus}>Quick seed v2 pack (.v2)</button>
         <button className="rounded bg-black text-white px-3 py-2" onClick={health}>Check Health</button>
         <button className="rounded bg-black text-white px-3 py-2" onClick={runSmoke}>Run Smoke (Block-15)</button>
         <button
@@ -120,7 +156,9 @@ export default function DevPage() {
       <pre className="whitespace-pre-wrap text-sm opacity-80 border rounded p-3 bg-black/10">
         {out ? JSON.stringify(out, null, 2) : 'No output yet.'}
       </pre>
-      <p className="text-xs opacity-60">This page is disabled in production.</p>
+      <p className="text-xs opacity-60">
+        {isProd ? "Production mode: Token required for admin actions." : "Development mode: No token required."}
+      </p>
     </div>
   );
 }

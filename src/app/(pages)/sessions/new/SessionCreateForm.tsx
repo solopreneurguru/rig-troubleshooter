@@ -2,7 +2,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export default function SessionCreateForm() {
+interface SessionCreateFormProps {
+  rigId?: string;
+  equipmentId?: string;
+}
+
+export default function SessionCreateForm({ 
+  rigId, 
+  equipmentId 
+}: SessionCreateFormProps) {
   const router = useRouter();
   const [problem, setProblem] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -26,7 +34,11 @@ export default function SessionCreateForm() {
       const res = await fetch("/api/sessions/create", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ problem }),
+        body: JSON.stringify({ 
+          problem,
+          rigId: rigId || undefined,
+          equipmentId: equipmentId || undefined
+        }),
         signal: ctrl.signal,
       });
       const json = await res.json().catch(() => ({}));
