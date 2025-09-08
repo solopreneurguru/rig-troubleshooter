@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { createSession } from "@/lib/airtable";
+import { withTimeout, jsonOk, jsonErr } from "@/lib/http";
 
 export async function POST(req: Request) {
   try {
@@ -7,40 +7,35 @@ export async function POST(req: Request) {
     
     const body = await req.json().catch(() => ({}));
     const problem = (body.problem ?? "").trim?.();
-    if (!problem) return NextResponse.json({ ok:false, error:"Problem description is required." }, { status: 422 });
+    if (!problem) return jsonErr("Problem description is required.", 422);
     
-    // Add 15s timeout via AbortController
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-    try {
-      const id = await createSession(
+    // Use shared timeout utility with 12s deadline
+    const id = await withTimeout(
+      createSession(
         "", // title - will be computed by Airtable
         problem,
         body.rigId || undefined,
         body.overrideRulePackKey || undefined,
         body.equipmentId || undefined,
         undefined // failureMode
-      );
-      
-      clearTimeout(timeoutId);
-      console.log(`[create-flow] Successfully created session: ${id}`);
-      return NextResponse.json({ ok:true, id, redirect:`/sessions/${encodeURIComponent(id)}` }, { status: 201 });
-    } catch (airtableError: any) {
-      clearTimeout(timeoutId);
-      if (airtableError.name === 'AbortError') {
-        console.log("[create-flow] Session creation timed out after 15s");
-        throw new Error("Request timed out - please try again");
-      }
-      throw airtableError;
-    }
-  } catch (e:any) {
-    console.log(`[create-flow] Session creation error: ${e?.message || String(e)}`);
-    return NextResponse.json({ ok:false, error: e?.message || String(e) }, { status: 500 });
+      ),
+      12000, // 12s deadline
+      () => console.log("[create-flow] Session creation timeout triggered")
+    );
+    
+    console.log(`[create-flow] Successfully created session: ${id}`);
+    return jsonOk({ id, redirect: `/sessions/${encodeURIComponent(id)}` }, { status: 201 });
+  } catch (e: any) {
+    const errorMsg = e?.code === 'ETIMEDOUT' 
+      ? "Request timed out - please try again" 
+      : (e?.message || "Session creation failed");
+    
+    console.log(`[create-flow] Session creation error: ${errorMsg}`);
+    return jsonErr(errorMsg, 500);
   }
 }
 
 // Keep method guarders if you want:
 export async function GET() {
-  return NextResponse.json({ ok:false, error:"Method Not Allowed" }, { status: 405 });
+  return jsonErr("Method Not Allowed", 405);
 }

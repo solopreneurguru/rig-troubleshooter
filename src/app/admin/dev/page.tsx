@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import DebugPanel from '@/components/DebugPanel';
 
 const isProd = process.env.NEXT_PUBLIC_VERCEL_ENV === 'production';
 
@@ -127,6 +128,8 @@ export default function DevPage() {
           </div>
         </div>
       )}
+      
+      <DebugPanel adminToken={isProd ? (localStorage.getItem('ADMIN_DEV_TOKEN') || token) : undefined} />
       
       <div className="flex flex-wrap gap-2">
         <button className="rounded bg-black text-white px-3 py-2" onClick={seedPlus}>Quick seed v2 pack (.v2)</button>

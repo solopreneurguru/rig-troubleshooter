@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SessionCreateForm from "./SessionCreateForm";
+import { fetchWithTimeout } from "@/lib/http";
 
 type RigRow = { id: string; name: string };
 
@@ -17,35 +18,45 @@ function RigPickerModal({
   const [loading, setLoading] = useState(false);
   const [rigs, setRigs] = useState<RigRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+
+  const fetchRigs = async (attempt = 1) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetchWithTimeout("/api/rigs/list", {}, 8000); // 8s timeout
+      const data = await response.json().catch(() => ({}));
+      
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || `HTTP ${response.status}`);
+      }
+      
+      const rigList = Array.isArray(data.rigs) ? data.rigs : [];
+      setRigs(rigList);
+      setRetryCount(0); // Reset retry count on success
+    } catch (e: any) {
+      const errorMsg = e.name === 'AbortError' 
+        ? "Request timed out - please try again" 
+        : (e.message || String(e));
+      
+      setError(errorMsg);
+      
+      // Auto-retry once if it's a timeout and we haven't retried yet
+      if (e.name === 'AbortError' && attempt === 1 && retryCount === 0) {
+        console.log("[create-flow] Auto-retrying rigs fetch...");
+        setRetryCount(1);
+        setTimeout(() => fetchRigs(2), 1000); // Retry after 1s
+        return;
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    // 10s timeout via AbortController
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-    
-    fetch("/api/rigs/list", { signal: controller.signal })
-      .then(async (r) => {
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok || !j?.ok) throw new Error(j?.error || `HTTP ${r.status}`);
-        return j.rigs as RigRow[];
-      })
-      .then((list) => setRigs(Array.isArray(list) ? list : []))
-      .catch((e) => {
-        if (e.name === 'AbortError') {
-          setError("Request timed out - please try again");
-        } else {
-          setError(e.message || String(e));
-        }
-      })
-      .finally(() => {
-        clearTimeout(timeoutId);
-        setLoading(false);
-      });
+    fetchRigs();
   }, [open]);
 
   if (!open) return null;
@@ -60,6 +71,12 @@ function RigPickerModal({
         {!loading && error && (
           <div className="text-sm text-red-400">
             Unable to load rigs. Please try again. [details: {error}]
+            <button 
+              onClick={() => fetchRigs()}
+              className="ml-2 px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              Retry
+            </button>
           </div>
         )}
 
@@ -213,10 +230,6 @@ export default function NewSessionPage() {
     setEquipmentCreating(true);
     setEquipmentCreateError(null);
     
-    // 15s timeout via AbortController
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    
     try {
       const body = { 
         name: newEquipmentName, 
@@ -227,12 +240,11 @@ export default function NewSessionPage() {
         plcDocUrl: newEquipmentPLCProject || undefined
       };
       
-      const res = await fetch("/api/equipment/instances/create", {
+      const res = await fetchWithTimeout("/api/equipment/instances/create", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+      }, 10000); // 10s timeout
       
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) {
@@ -249,14 +261,11 @@ export default function NewSessionPage() {
       setNewEquipmentType("");
       setNewEquipmentPLCProject("");
     } catch (e: any) {
-      if (e.name === 'AbortError') {
-        setEquipmentCreateError("Request timed out - please try again");
-      } else {
-        setEquipmentCreateError(e?.message || "Network error");
-      }
+      const errorMsg = e.name === 'AbortError' 
+        ? "Request timed out - please try again" 
+        : (e?.message || "Network error");
+      setEquipmentCreateError(errorMsg);
       setEquipmentCreating(false);
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
 
