@@ -32,7 +32,7 @@ const baseId = process.env.AIRTABLE_BASE_ID;
 const rpTableId = process.env.TB_RULEPACKS;
 
 const base = apiKey && baseId ? new Airtable({ apiKey }).base(baseId) : null;
-const table = (id?: string) => {
+export const table = (id?: string) => {
   if (!base) throw new Error("RulePacks: Airtable base not configured");
   if (!id) throw new Error("RulePacks: TB_RULEPACKS not set");
   return base(id);
@@ -353,4 +353,46 @@ export function isV2Pack(rec: AnyRecord): boolean {
   if (json?.version === 2) return true;
   if (typeof key === 'string' && /\.v2$/.test(key)) return true;
   return false;
+}
+
+// Upsert RulePack by key (create or update)
+export async function upsertRulePackByKey(key: string, pack: any): Promise<{ action: string; id: string }> {
+  const tbl = table(rpTableId);
+  
+  // Try to find existing pack by key (case-insensitive)
+  const found = await tbl.select({
+    filterByFormula: `LOWER({Key})=LOWER("${key}")`,
+    maxRecords: 1
+  }).firstPage();
+
+  const fields: any = {
+    Key: key,
+    Active: true,
+    Json: JSON.stringify(pack, null, 2),
+  };
+
+  // Try to link EquipmentType if available
+  try {
+    const EQUIPTYPES_ID = process.env.TB_EQUIPMENT_TYPES || process.env.TB_EQUIP_TYPES;
+    if (EQUIPTYPES_ID) {
+      const etTbl = table(EQUIPTYPES_ID);
+      const et = await etTbl.select({
+        filterByFormula: `LOWER({Name})="topdrive"`,
+        maxRecords: 1
+      }).firstPage();
+      if (et && et[0]) {
+        try { fields["EquipmentType"] = [et[0].id]; } catch {}
+        try { fields["EquipmentTypeLink"] = [et[0].id]; } catch {}
+      }
+    }
+  } catch {}
+
+  if (found && found[0]) {
+    const updated = await tbl.update(found[0].id, fields);
+    return { action: "updated", id: updated.id };
+  } else {
+    const created = await tbl.create([{ fields }]);
+    const rec = created && created[0] ? created[0] : null;
+    return { action: "created", id: rec?.id || "unknown" };
+  }
 }

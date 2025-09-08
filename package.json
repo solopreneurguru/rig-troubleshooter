@@ -7,7 +7,8 @@
     "build": "next build --turbopack",
     "start": "next start",
     "docs:update": "node scripts/docs-update.mjs",
-    "docs:check": "node scripts/docs-update.mjs --check"
+    "docs:check": "node scripts/docs-update.mjs --check",
+    "smoke:prod": "node scripts/smoke-prod.mjs"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.3.0",
