@@ -148,7 +148,7 @@ export default function NewSessionPage() {
   }
 
   return (
-    <main className="p-6 max-w-2xl space-y-4">
+    <main className="p-6 max-w-2xl space-y-4" role="group">
       <h1 className="text-2xl font-bold">Start a New Session</h1>
       
       {/* Rig Selection */}
@@ -163,6 +163,7 @@ export default function NewSessionPage() {
             disabled={selectedRig !== null}
           />
           <button 
+            type="button"
             onClick={() => setShowRigModal(true)}
             className="px-3 py-2 border rounded text-sm"
           >
@@ -173,6 +174,7 @@ export default function NewSessionPage() {
           <div className="text-sm text-zinc-400">
             Selected: {selectedRig.Name} {selectedRig.Type && `(${selectedRig.Type})`}
             <button 
+              type="button"
               onClick={() => setSelectedRig(null)}
               className="ml-2 text-red-400 underline"
             >
@@ -193,6 +195,7 @@ export default function NewSessionPage() {
             disabled={true}
           />
           <button 
+            type="button"
             onClick={() => setShowEquipmentModal(true)}
             className="px-3 py-2 border rounded text-sm"
           >
@@ -204,6 +207,7 @@ export default function NewSessionPage() {
             Selected: {selectedEquipmentInstance.Name} 
             {selectedEquipmentInstance.SerialNumber && ` (S/N: ${selectedEquipmentInstance.SerialNumber})`}
             <button 
+              type="button"
               onClick={() => setSelectedEquipmentInstance(null)}
               className="ml-2 text-red-400 underline"
             >
@@ -216,11 +220,7 @@ export default function NewSessionPage() {
       {/* Problem Description */}
       <div className="space-y-2">
         <label className="block text-sm font-medium">Problem Description *</label>
-        <SessionCreateForm 
-          defaultRigId={selectedRig?.id}
-          defaultEquipmentId={selectedEquipmentInstance?.id}
-          defaultRulePackKey={rpKey}
-        />
+        <SessionCreateForm />
       </div>
       
       {/* Advanced Rule Pack Selection */}
@@ -228,6 +228,7 @@ export default function NewSessionPage() {
         <div className="flex items-center gap-2">
           <label className="block text-sm font-medium">Rule Pack Selection</label>
           <button 
+            type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
             className="text-xs text-blue-600 underline"
           >
@@ -256,6 +257,7 @@ export default function NewSessionPage() {
             )}
             {rpKey && (
               <button
+                type="button"
                 onClick={handleManualPackSelection}
                 className="mt-2 px-3 py-1 bg-blue-600 text-white rounded text-sm"
               >
@@ -293,6 +295,7 @@ export default function NewSessionPage() {
               ))}
             </div>
             <button 
+              type="button"
               onClick={() => setShowRigModal(false)}
               className="mt-4 px-4 py-2 border border-zinc-700 rounded bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
             >
@@ -361,6 +364,7 @@ export default function NewSessionPage() {
                   onChange={e => setNewEquipmentPLCProject(e.target.value)}
                 />
                 <button
+                  type="button"
                   onClick={createEquipmentInstance}
                   disabled={!newEquipmentName.trim()}
                   className="w-full px-3 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
@@ -371,6 +375,7 @@ export default function NewSessionPage() {
             </div>
             
             <button 
+              type="button"
               onClick={() => setShowEquipmentModal(false)}
               className="mt-4 px-4 py-2 border border-zinc-700 rounded bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
             >
