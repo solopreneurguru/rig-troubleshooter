@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import SessionCreateForm from "./SessionCreateForm";
 
 interface EquipmentType {
   id: string;
@@ -24,14 +25,11 @@ interface Rig {
 
 export default function NewSessionPage() {
   const [rigName, setRigName] = useState("");
-  const [problem, setProblem] = useState("");
   const [packs, setPacks] = useState<any[]>([]);
   const [rpKey, setRpKey] = useState("");
-  const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [overrideHint, setOverrideHint] = useState("");
-  const [error, setError] = useState<string | null>(null);
   
   // New state for equipment selection
   const [showRigModal, setShowRigModal] = useState(false);
@@ -102,8 +100,8 @@ export default function NewSessionPage() {
   }, [selectedEquipmentInstance]);
 
   async function handleManualPackSelection() {
-    if (!rpKey || !problem.trim()) {
-      alert("Please select a rule pack and describe your issue");
+    if (!rpKey) {
+      alert("Please select a rule pack");
       return;
     }
     
@@ -113,61 +111,6 @@ export default function NewSessionPage() {
     setOverrideHint("");
   }
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault(); // prevent full page reload
-    setError(null);
-    if (!problem.trim()) {
-      setError("Please describe the problem.");
-      return;
-    }
-    setBusy(true);
-    try {
-      // 1) Call Symptom Router with equipment type hint to try and auto-detect a pack key
-      const equipmentTypeHint = selectedEquipmentInstance?.EquipmentType?.[0];
-      const intakeRes = await fetch("/api/intake/message", { 
-        method:"POST", 
-        headers:{ "Content-Type":"application/json" }, 
-        body: JSON.stringify({ 
-          sessionId: "temp", // We'll create the session after intake
-          text: problem,
-          equipmentTypeHint 
-        }) 
-      });
-      const intake = await intakeRes.json().catch(() => null);
-
-      // 2) Prefer the user override if set; else use intake packKey if present
-      const chosenKey = rpKey || intake?.packKey;
-      const chosenFailureMode = intake?.failureMode;
-
-      // 3) POST to /api/sessions/create with { ..., RulePackKey: chosenKey }
-      const res = await fetch("/api/sessions/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          rigId: selectedRig?.id,
-          problem, 
-          rulePackKey: chosenKey,
-          failureMode: chosenFailureMode,
-          equipmentInstanceId: selectedEquipmentInstance?.id
-        }),
-      });
-      
-      const json = await res.json().catch(() => ({}));
-      console.log("create-session", res.status, json);
-      
-      if (!res.ok || !json?.ok) {
-        setError(json?.error || `Create failed (${res.status})`);
-        setBusy(false);
-        return;
-      }
-      
-      // 4) Only navigate to /sessions/[id] after we get { ok:true }
-      router.push(json.redirect || `/sessions/${json.id}`);
-    } catch (err: any) {
-      setError(err?.message || "Network error.");
-      setBusy(false);
-    }
-  }
   
   async function createEquipmentInstance() {
     if (!newEquipmentName.trim()) {
@@ -207,8 +150,6 @@ export default function NewSessionPage() {
   return (
     <main className="p-6 max-w-2xl space-y-4">
       <h1 className="text-2xl font-bold">Start a New Session</h1>
-      
-      <form onSubmit={onSubmit} className="space-y-4">
       
       {/* Rig Selection */}
       <div className="space-y-2">
@@ -275,12 +216,10 @@ export default function NewSessionPage() {
       {/* Problem Description */}
       <div className="space-y-2">
         <label className="block text-sm font-medium">Problem Description *</label>
-        <textarea 
-          className="bg-zinc-900 text-zinc-100 placeholder:text-zinc-500 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md px-3 py-2 w-full" 
-          rows={4} 
-          placeholder="Describe your issue and equipment in detail..." 
-          value={problem} 
-          onChange={e=>setProblem(e.target.value)} 
+        <SessionCreateForm 
+          defaultRigId={selectedRig?.id}
+          defaultEquipmentId={selectedEquipmentInstance?.id}
+          defaultRulePackKey={rpKey}
         />
       </div>
       
@@ -318,10 +257,9 @@ export default function NewSessionPage() {
             {rpKey && (
               <button
                 onClick={handleManualPackSelection}
-                disabled={busy}
-                className="mt-2 px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50"
+                className="mt-2 px-3 py-1 bg-blue-600 text-white rounded text-sm"
               >
-                {busy ? "Processing..." : "Use Selected Pack"}
+                Use Selected Pack
               </button>
             )}
           </div>
@@ -333,20 +271,6 @@ export default function NewSessionPage() {
         )}
       </div>
       
-        {error ? (
-          <div className="text-red-400 text-sm border border-red-700 rounded p-2 bg-red-950/20">
-            {error}
-          </div>
-        ) : null}
-
-        <button
-          type="submit"
-          disabled={busy}
-          className="px-4 py-2 rounded bg-blue-600 disabled:opacity-60"
-        >
-          {busy ? "Creating…" : "Create Session"}
-        </button>
-      </form>
       
       {/* Rig Selection Modal */}
       {showRigModal && (
