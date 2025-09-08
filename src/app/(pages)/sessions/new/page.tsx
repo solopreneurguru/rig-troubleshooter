@@ -31,6 +31,7 @@ export default function NewSessionPage() {
   const [loading, setLoading] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [overrideHint, setOverrideHint] = useState("");
+  const [error, setError] = useState<string | null>(null);
   
   // New state for equipment selection
   const [showRigModal, setShowRigModal] = useState(false);
@@ -112,12 +113,13 @@ export default function NewSessionPage() {
     setOverrideHint("");
   }
 
-  async function createSession() {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault(); // prevent full page reload
+    setError(null);
     if (!problem.trim()) {
-      alert("Please describe your issue");
+      setError("Please describe the problem.");
       return;
     }
-    
     setBusy(true);
     try {
       // 1) Call Symptom Router with equipment type hint to try and auto-detect a pack key
@@ -142,7 +144,7 @@ export default function NewSessionPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          rigName: selectedRig?.Name || rigName, 
+          rigId: selectedRig?.id,
           problem, 
           rulePackKey: chosenKey,
           failureMode: chosenFailureMode,
@@ -150,20 +152,19 @@ export default function NewSessionPage() {
         }),
       });
       
-      const json = await res.json();
-      if (!json.ok) {
-        alert(json.error || "Failed to create session");
+      const json = await res.json().catch(() => ({}));
+      console.log("create-session", res.status, json);
+      
+      if (!res.ok || !json?.ok) {
+        setError(json?.error || `Create failed (${res.status})`);
         setBusy(false);
         return;
       }
       
-      const sessionId = json.sessionId;
-
       // 4) Only navigate to /sessions/[id] after we get { ok:true }
-      router.push(`/sessions/${sessionId}`);
-    } catch (e) {
-      alert("Failed to create session: " + e);
-    } finally {
+      router.push(json.redirect || `/sessions/${json.id}`);
+    } catch (err: any) {
+      setError(err?.message || "Network error.");
       setBusy(false);
     }
   }
@@ -206,6 +207,8 @@ export default function NewSessionPage() {
   return (
     <main className="p-6 max-w-2xl space-y-4">
       <h1 className="text-2xl font-bold">Start a New Session</h1>
+      
+      <form onSubmit={onSubmit} className="space-y-4">
       
       {/* Rig Selection */}
       <div className="space-y-2">
@@ -330,13 +333,20 @@ export default function NewSessionPage() {
         )}
       </div>
       
-      <button 
-        onClick={createSession} 
-        disabled={busy || !problem.trim()} 
-        className="px-4 py-2 rounded bg-black text-white disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {busy ? "Creating..." : "Create Session"}
-      </button>
+        {error ? (
+          <div className="text-red-400 text-sm border border-red-700 rounded p-2 bg-red-950/20">
+            {error}
+          </div>
+        ) : null}
+
+        <button
+          type="submit"
+          disabled={busy}
+          className="px-4 py-2 rounded bg-blue-600 disabled:opacity-60"
+        >
+          {busy ? "Creating…" : "Create Session"}
+        </button>
+      </form>
       
       {/* Rig Selection Modal */}
       {showRigModal && (
