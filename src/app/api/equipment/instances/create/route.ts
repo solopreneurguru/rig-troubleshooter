@@ -25,7 +25,7 @@ export async function POST(req: Request) {
 
     if (!name) return jsonErr("name is required", 422);
 
-    // Use shared timeout utility with 10s deadline
+    // Use shared timeout utility with 15s deadline
     const equipTbl = table(TB_EQUIPMENT_INSTANCES);
 
     // Resolve rig link (optional) - prefer direct ID, fallback to name lookup
@@ -35,8 +35,8 @@ export async function POST(req: Request) {
     } else if (rigName) {
       const rig = await withTimeout(
         findByName(TB_RIGS, rigName, NAME_FIELD),
-        3000, // 3s for rig lookup
-        () => console.log("[create-flow] Rig lookup timeout")
+        5000, // 5s for rig lookup
+        () => console.error('[timeout]', '/api/equipment/instances/create', { ms: 5000, hint: 'airtable' })
       );
       if (!rig) return jsonErr(`Rig not found: ${rigName}`, 422);
       finalRigId = rig.id;
@@ -49,8 +49,8 @@ export async function POST(req: Request) {
     } else if (typeName) {
       const typeRec = await withTimeout(
         findByName(TB_EQUIPMENT_TYPES, typeName, NAME_FIELD),
-        3000, // 3s for type lookup
-        () => console.log("[create-flow] Type lookup timeout")
+        5000, // 5s for type lookup
+        () => console.error('[timeout]', '/api/equipment/instances/create', { ms: 5000, hint: 'airtable' })
       );
       if (!typeRec) return jsonErr(`EquipmentType not found: ${typeName}`, 422);
       finalTypeId = typeRec.id;
@@ -64,8 +64,8 @@ export async function POST(req: Request) {
 
     const created = await withTimeout(
       equipTbl.create([{ fields }]),
-      10000, // 10s deadline for creation
-      () => console.log("[create-flow] Equipment creation timeout triggered")
+      15000, // 15s deadline for creation
+      () => console.error('[timeout]', '/api/equipment/instances/create', { ms: 15000, hint: 'airtable' })
     );
     
     const rec = created?.[0];
@@ -74,11 +74,12 @@ export async function POST(req: Request) {
     console.log(`[create-flow] Successfully created equipment instance: ${name} (${rec.id})`);
     return jsonOk({ id: rec.id, name }, { status: 201 });
   } catch (e: any) {
-    const errorMsg = e?.code === 'ETIMEDOUT' 
-      ? "Request timed out - please try again" 
-      : (e?.message || "server error");
+    if (e?.code === 'ETIMEDOUT') {
+      console.error('[timeout]', '/api/equipment/instances/create', { ms: 15000, hint: 'airtable' });
+      return jsonErr('upstream timeout', 504);
+    }
     
-    console.log(`[create-flow] Equipment creation error: ${errorMsg}`);
-    return jsonErr(errorMsg, 500);
+    console.log(`[create-flow] Equipment creation error: ${e?.message || 'server error'}`);
+    return jsonErr(e?.message || 'server error', 500);
   }
 }

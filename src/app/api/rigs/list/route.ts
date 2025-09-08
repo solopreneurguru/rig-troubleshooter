@@ -13,12 +13,12 @@ export async function GET() {
       return jsonErr("Airtable env missing", 500);
     }
 
-    // Use shared timeout utility with 8s deadline
+    // Use shared timeout utility with 15s deadline
     const tb = table(process.env.TB_RIGS || "Rigs");
     const rows = await withTimeout(
       tb.select({ fields: ["Name"], pageSize: 100 }).all(),
-      8000, // 8s deadline
-      () => console.log("[create-flow] Rigs list timeout triggered")
+      15000, // 15s deadline
+      () => console.error('[timeout]', '/api/rigs/list', { ms: 15000, hint: 'airtable' })
     );
 
     const rigs = rows
@@ -28,11 +28,12 @@ export async function GET() {
     console.log(`[create-flow] Successfully fetched ${rigs.length} rigs`);
     return jsonOk({ rigs });
   } catch (e: any) {
-    const errorMsg = e?.code === 'ETIMEDOUT' 
-      ? "Request timed out - please try again" 
-      : (e?.message || "list rigs failed");
+    if (e?.code === 'ETIMEDOUT') {
+      console.error('[timeout]', '/api/rigs/list', { ms: 15000, hint: 'airtable' });
+      return jsonErr('upstream timeout', 504);
+    }
     
-    console.log(`[create-flow] Rigs list error: ${errorMsg}`);
-    return jsonErr(errorMsg, 500);
+    console.log(`[create-flow] Rigs list error: ${e?.message || 'server error'}`);
+    return jsonErr(e?.message || 'server error', 500);
   }
 }

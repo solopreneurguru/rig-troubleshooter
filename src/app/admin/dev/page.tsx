@@ -24,6 +24,8 @@ export default function DevPage() {
         return;
       }
       headers.Authorization = `Bearer ${storedToken}`;
+    } else {
+      headers.Authorization = 'Bearer Cooper';
     }
     const r = await jfetch('/api/dev/seed/v2-pack-plus', { method: 'POST', headers });
     setOut({ route: '/api/dev/seed/v2-pack-plus', ...r });
@@ -132,7 +134,7 @@ export default function DevPage() {
       <DebugPanel adminToken={isProd ? (localStorage.getItem('ADMIN_DEV_TOKEN') || token) : undefined} />
       
       <div className="flex flex-wrap gap-2">
-        <button className="rounded bg-black text-white px-3 py-2" onClick={seedPlus}>Quick seed v2 pack (.v2)</button>
+        <button className="rounded bg-black text-white px-3 py-2" onClick={seedPlus}>Seed v2 pack (plus)</button>
         <button className="rounded bg-black text-white px-3 py-2" onClick={health}>Check Health</button>
         <button className="rounded bg-black text-white px-3 py-2" onClick={runSmoke}>Run Smoke (Block-15)</button>
         <button
@@ -153,6 +155,36 @@ export default function DevPage() {
           }}
         >
           Create demo equipment (DDD on Demo Rig Alpha)
+        </button>
+        <button
+          className="px-3 py-2 rounded bg-purple-700"
+          onClick={async ()=>{
+            setOut("creating demo session…");
+            try {
+              const headers: Record<string, string> = { "content-type": "application/json" };
+              if (isProd) {
+                const storedToken = localStorage.getItem('ADMIN_DEV_TOKEN') || token;
+                if (storedToken) headers.Authorization = `Bearer ${storedToken}`;
+              } else {
+                headers.Authorization = 'Bearer Cooper';
+              }
+              const r = await fetch("/api/admin/session", {
+                method:"POST",
+                headers,
+                body: JSON.stringify({ 
+                  problem: "Admin test session", 
+                  rigName: "Demo Rig Alpha",
+                  equipmentName: "DDD"
+                }),
+              });
+              const j = await r.json();
+              setOut(JSON.stringify(j, null, 2));
+            } catch(e:any) {
+              setOut(String(e?.message || e));
+            }
+          }}
+        >
+          Create demo session (admin)
         </button>
         <button className="rounded bg-red-600 text-white px-3 py-2" onClick={cleanup}>Cleanup demo sessions</button>
       </div>

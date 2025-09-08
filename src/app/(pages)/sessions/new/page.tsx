@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SessionCreateForm from "./SessionCreateForm";
 import { fetchWithTimeout } from "@/lib/http";
+import DebugPanel from "./DebugPanel";
 
 type RigRow = { id: string; name: string };
 
@@ -25,11 +26,12 @@ function RigPickerModal({
       setLoading(true);
       setError(null);
       
-      const response = await fetchWithTimeout("/api/rigs/list", {}, 8000); // 8s timeout
+      const response = await fetchWithTimeout("/api/rigs/list", {}, 10000); // 10s timeout
       const data = await response.json().catch(() => ({}));
       
       if (!response.ok || !data?.ok) {
-        throw new Error(data?.error || `HTTP ${response.status}`);
+        const errorMsg = response.status === 504 ? "Unable to load rigs (timeout)" : (data?.error || `HTTP ${response.status}`);
+        throw new Error(errorMsg);
       }
       
       const rigList = Array.isArray(data.rigs) ? data.rigs : [];
@@ -37,7 +39,7 @@ function RigPickerModal({
       setRetryCount(0); // Reset retry count on success
     } catch (e: any) {
       const errorMsg = e.name === 'AbortError' 
-        ? "Request timed out - please try again" 
+        ? "Unable to load rigs (timeout)" 
         : (e.message || String(e));
       
       setError(errorMsg);
@@ -70,7 +72,7 @@ function RigPickerModal({
 
         {!loading && error && (
           <div className="text-sm text-red-400">
-            Unable to load rigs. Please try again. [details: {error}]
+            {error}. 
             <button 
               onClick={() => fetchRigs()}
               className="ml-2 px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
@@ -244,11 +246,12 @@ export default function NewSessionPage() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
-      }, 10000); // 10s timeout
+      }, 15000); // 15s timeout
       
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) {
-        throw new Error(json?.error || `HTTP ${res.status}`);
+        const errorMsg = res.status === 504 ? "Equipment creation timed out" : (json?.error || `HTTP ${res.status}`);
+        throw new Error(errorMsg);
       }
       
       // Success — reflect selection in parent state
@@ -262,7 +265,7 @@ export default function NewSessionPage() {
       setNewEquipmentPLCProject("");
     } catch (e: any) {
       const errorMsg = e.name === 'AbortError' 
-        ? "Request timed out - please try again" 
+        ? "Equipment creation timed out" 
         : (e?.message || "Network error");
       setEquipmentCreateError(errorMsg);
       setEquipmentCreating(false);
@@ -459,6 +462,9 @@ export default function NewSessionPage() {
           </div>
         </div>
       )}
+      
+      {/* Debug Panel - only show if NEXT_PUBLIC_DEBUG is set */}
+      {process.env.NEXT_PUBLIC_DEBUG === '1' && <DebugPanel />}
     </main>
   );
 }

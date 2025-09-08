@@ -5,12 +5,11 @@ export async function POST(req: Request) {
   try {
     console.log("[create-flow] Starting session creation");
     
-    const body = await req.json().catch(() => ({}));
-    const problem = (body.problem ?? "").trim?.();
-    if (!problem) return jsonErr("Problem description is required.", 422);
+    const body = await withTimeout(req.json(), 5000);
+    const problem = (body?.problem ?? "").trim();
+    if (!problem) return jsonErr("problem is required", 422);
     
-    // Use shared timeout utility with 12s deadline
-    const id = await withTimeout(
+    const sessionId = await withTimeout(
       createSession(
         "", // title - will be computed by Airtable
         problem,
@@ -19,19 +18,27 @@ export async function POST(req: Request) {
         body.equipmentId || undefined,
         undefined // failureMode
       ),
-      12000, // 12s deadline
-      () => console.log("[create-flow] Session creation timeout triggered")
+      20000, // 20s deadline
+      () => console.error('[timeout]', '/api/sessions/create', { ms: 20000, hint: 'airtable' })
     );
     
-    console.log(`[create-flow] Successfully created session: ${id}`);
-    return jsonOk({ id, redirect: `/sessions/${encodeURIComponent(id)}` }, { status: 201 });
-  } catch (e: any) {
-    const errorMsg = e?.code === 'ETIMEDOUT' 
-      ? "Request timed out - please try again" 
-      : (e?.message || "Session creation failed");
+    if (!sessionId) return jsonErr('failed to create session', 502);
     
-    console.log(`[create-flow] Session creation error: ${errorMsg}`);
-    return jsonErr(errorMsg, 500);
+    console.log(`[create-flow] Successfully created session: ${sessionId}`);
+    return jsonOk({ id: sessionId, redirect: `/sessions/${encodeURIComponent(sessionId)}` }, { status: 201 });
+  } catch (e: any) {
+    if (e?.code === 'ETIMEDOUT') {
+      console.error('[timeout]', '/api/sessions/create', { ms: 20000, hint: 'airtable' });
+      return jsonErr('upstream timeout', 504);
+    }
+    
+    // Log Airtable error status if available
+    if (e?.status) {
+      console.log(`[create-flow] Airtable error status: ${e.status}`);
+    }
+    
+    console.log(`[create-flow] Session creation error: ${e?.message || 'server error'}`);
+    return jsonErr(e?.message || 'server error', 500);
   }
 }
 

@@ -24,9 +24,10 @@ export default function SessionCreateForm({
       setError("Please describe the problem.");
       return;
     }
-    // 15s timeout guard
+    
+    // 25s timeout guard
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 15000);
+    const t = setTimeout(() => ctrl.abort(), 25000);
 
     setSubmitting(true);
     setStatus("Posting…");
@@ -43,21 +44,26 @@ export default function SessionCreateForm({
       });
       const json = await res.json().catch(() => ({}));
       console.log("create-session", res.status, json);
+      
       if (!res.ok || !json?.ok) {
-        setError(json?.error || `Create failed (${res.status})`);
-        setStatus("❌ " + (json?.error || `Create failed (${res.status})`));
+        const errorMsg = res.status === 504 ? "Create failed: upstream timeout" : (json?.error || `Create failed (${res.status})`);
+        setError(errorMsg);
+        setStatus("❌ Create failed: " + errorMsg);
         setSubmitting(false);
         clearTimeout(t);
         return;
       }
-      setStatus(`✅ Created ${json.id}`);
+      
+      setStatus(`Created ${json.id}`);
       clearTimeout(t);
       router.push(json.redirect || `/sessions/${json.id}`);
     } catch (err:any) {
       clearTimeout(t);
-      const msg = err?.name === "AbortError" ? "Request timed out (15s). Try again." : (err?.message || "Network error.");
+      const msg = err?.name === "AbortError" ? "Request timed out (25s). Try again." : (err?.message || "Network error.");
       setError(msg);
-      setStatus("❌ " + msg);
+      setStatus("❌ Create failed: " + msg);
+      setSubmitting(false);
+    } finally {
       setSubmitting(false);
     }
   }
