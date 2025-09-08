@@ -51,11 +51,6 @@ export default function NewSessionPage() {
   useEffect(() => {
     (async () => {
       try {
-        // Load rule packs (all packs for now, will filter by type when needed)
-        const r = await fetch("/api/rulepacks/list");
-        const j = await r.json();
-        if (j.ok) setPacks(j.packs || []);
-        
         // Load equipment types
         const etRes = await fetch("/api/equipment/types");
         const etData = await etRes.json();
@@ -80,24 +75,25 @@ export default function NewSessionPage() {
   }, []);
 
   // Load filtered packs when equipment instance changes
-  useEffect(() => {
-    if (selectedEquipmentInstance?.EquipmentType?.[0]) {
-      (async () => {
-        try {
-          const equipmentType = selectedEquipmentInstance.EquipmentType![0];
-          const r = await fetch(`/api/rulepacks/list?type=${encodeURIComponent(equipmentType)}`);
-          const j = await r.json();
-          if (j.ok) {
-            // Only show .v2 packs
-            const v2Packs = j.packs.filter((pack: any) => pack.key?.endsWith('.v2'));
-            setPacks(v2Packs);
-          }
-        } catch (e) {
-          console.log("Failed to load filtered packs:", e);
-        }
-      })();
-    }
-  }, [selectedEquipmentInstance]);
+  // DISABLED: Rule pack loading deferred until after session creation
+  // useEffect(() => {
+  //   if (selectedEquipmentInstance?.EquipmentType?.[0]) {
+  //     (async () => {
+  //       try {
+  //         const equipmentType = selectedEquipmentInstance.EquipmentType![0];
+  //         const r = await fetch(`/api/rulepacks/list?type=${encodeURIComponent(equipmentType)}`);
+  //         const j = await r.json();
+  //         if (j.ok) {
+  //           // Only show .v2 packs
+  //           const v2Packs = j.packs.filter((pack: any) => pack.key?.endsWith('.v2'));
+  //           setPacks(v2Packs);
+  //         }
+  //       } catch (e) {
+  //         console.log("Failed to load filtered packs:", e);
+  //       }
+  //     })();
+  //   }
+  // }, [selectedEquipmentInstance]);
 
   async function handleManualPackSelection() {
     if (!rpKey) {
@@ -219,7 +215,6 @@ export default function NewSessionPage() {
       
       {/* Problem Description */}
       <div className="space-y-2">
-        <label className="block text-sm font-medium">Problem Description *</label>
         <SessionCreateForm />
       </div>
       
@@ -237,33 +232,12 @@ export default function NewSessionPage() {
         </div>
         {showAdvanced && (
           <div className="bg-zinc-900 text-zinc-100 border border-zinc-800 rounded-2xl p-3">
-            {loading ? (
-              <div className="text-center py-4">Loading Rule Packs...</div>
-            ) : (
-              <select className="bg-zinc-900 text-zinc-100 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md px-3 py-2 w-full" value={rpKey} onChange={e=>setRpKey(e.target.value)}>
-                <option value="">Auto-select from problem description</option>
-                {packs.filter((p:any) => p.key?.endsWith('.v2')).map((p:any) => 
-                  <option key={p.id} value={p.key} data-id={p.id}>{p.key}</option>
-                )}
-              </select>
-            )}
-            <div className="text-xs text-zinc-400 mt-2">
-              Leave empty to auto-select based on problem description and equipment type.
+            <div className="text-center py-4 text-zinc-400">
+              Rule pack selection will be available after creating the session.
             </div>
-            {overrideHint && (
-              <div className="text-xs text-orange-600 mt-2 font-medium">
-                {overrideHint}
-              </div>
-            )}
-            {rpKey && (
-              <button
-                type="button"
-                onClick={handleManualPackSelection}
-                className="mt-2 px-3 py-1 bg-blue-600 text-white rounded text-sm"
-              >
-                Use Selected Pack
-              </button>
-            )}
+            <div className="text-xs text-zinc-400 mt-2">
+              Rule packs will be auto-selected based on problem description and equipment type after session creation.
+            </div>
           </div>
         )}
         {!showAdvanced && (
