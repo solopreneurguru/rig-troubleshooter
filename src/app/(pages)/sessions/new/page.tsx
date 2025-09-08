@@ -3,6 +3,91 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SessionCreateForm from "./SessionCreateForm";
 
+type RigRow = { id: string; name: string };
+
+function RigPickerModal({
+  open,
+  onClose,
+  onPick,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onPick: (rig: RigRow) => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [rigs, setRigs] = useState<RigRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    setError(null);
+    fetch("/api/rigs/list")
+      .then(async (r) => {
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j?.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+        return j.rigs as RigRow[];
+      })
+      .then((list) => setRigs(Array.isArray(list) ? list : []))
+      .catch((e) => setError(e.message || String(e)))
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+      <div className="w-[520px] max-w-[92vw] rounded-2xl bg-neutral-900 p-6 shadow-xl">
+        <div className="text-lg font-semibold mb-3">Select Rig</div>
+
+        {loading && <div className="text-sm text-neutral-300">Loading rigs…</div>}
+
+        {!loading && error && (
+          <div className="text-sm text-red-400">
+            Failed to load rigs: {error}
+            <div className="mt-2 text-xs text-neutral-400">
+              Check Airtable Rigs table or try again. (Owner can verify{' '}
+              <code>/api/rigs/list</code> directly.)
+            </div>
+          </div>
+        )}
+
+        {!loading && !error && rigs.length === 0 && (
+          <div className="text-sm text-neutral-300">
+            No rigs found. Create one in Airtable or continue without selecting a rig.
+          </div>
+        )}
+
+        {!loading && !error && rigs.length > 0 && (
+          <div className="mt-2 max-h-[300px] overflow-auto space-y-2">
+            {rigs.map((r) => (
+              <button
+                key={r.id}
+                onClick={() => {
+                  onPick(r);
+                  onClose();
+                }}
+                className="w-full rounded-lg bg-neutral-800 hover:bg-neutral-700 px-3 py-2 text-left"
+              >
+                {r.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-5 flex justify-end">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface EquipmentType {
   id: string;
   Name: string;
@@ -34,11 +119,9 @@ export default function NewSessionPage() {
   // New state for equipment selection
   const [showRigModal, setShowRigModal] = useState(false);
   const [showEquipmentModal, setShowEquipmentModal] = useState(false);
-  const [selectedRig, setSelectedRig] = useState<Rig | null>(null);
   const [selectedEquipmentInstance, setSelectedEquipmentInstance] = useState<EquipmentInstance | null>(null);
   const [equipmentTypes, setEquipmentTypes] = useState<EquipmentType[]>([]);
   const [equipmentInstances, setEquipmentInstances] = useState<EquipmentInstance[]>([]);
-  const [rigs, setRigs] = useState<Rig[]>([]);
   
   // New equipment instance creation
   const [newEquipmentName, setNewEquipmentName] = useState("");
@@ -57,11 +140,6 @@ export default function NewSessionPage() {
         const etRes = await fetch("/api/equipment/types");
         const etData = await etRes.json();
         if (etData.ok) setEquipmentTypes(etData.types || []);
-        
-        // Load rigs
-        const rigsRes = await fetch("/api/rigs/list");
-        const rigsData = await rigsRes.json();
-        if (rigsData.ok) setRigs(rigsData.rigs || []);
         
         // Load equipment instances
         const eiRes = await fetch("/api/equipment/instances");
@@ -125,7 +203,7 @@ export default function NewSessionPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ 
           name: newEquipmentName, 
-          rigName: selectedRig ? selectedRig.Name : undefined,
+          rigName: rigName || undefined,
           typeName: equipmentTypes.find(t => t.id === newEquipmentType)?.Name || undefined
         }),
       });
@@ -163,9 +241,8 @@ export default function NewSessionPage() {
           <input 
             className="bg-zinc-900 text-zinc-100 placeholder:text-zinc-500 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md px-3 py-2 flex-1" 
             placeholder="Rig Name (optional)" 
-            value={selectedRig?.Name || rigName} 
+            value={rigName} 
             onChange={e=>setRigName(e.target.value)} 
-            disabled={selectedRig !== null}
           />
           <button 
             type="button"
@@ -175,18 +252,6 @@ export default function NewSessionPage() {
             Select Rig
           </button>
         </div>
-        {selectedRig && (
-          <div className="text-sm text-zinc-400">
-            Selected: {selectedRig.Name} {selectedRig.Type && `(${selectedRig.Type})`}
-            <button 
-              type="button"
-              onClick={() => setSelectedRig(null)}
-              className="ml-2 text-red-400 underline"
-            >
-              Clear
-            </button>
-          </div>
-        )}
       </div>
       
       {/* Equipment Instance Selection */}
@@ -258,35 +323,13 @@ export default function NewSessionPage() {
       
       
       {/* Rig Selection Modal */}
-      {showRigModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 text-zinc-100 border border-zinc-800 shadow-xl rounded-2xl p-6 max-w-md w-full max-h-96 overflow-y-auto">
-            <h3 className="text-lg font-bold mb-4">Select Rig</h3>
-            <div className="space-y-2">
-              {rigs.map((rig) => (
-                <button
-                  key={rig.id}
-                  onClick={() => {
-                    setSelectedRig(rig);
-                    setShowRigModal(false);
-                  }}
-                  className="w-full text-left p-2 border border-zinc-700 rounded hover:bg-zinc-800 text-zinc-100"
-                >
-                  <div className="font-medium">{rig.Name}</div>
-                  {rig.Type && <div className="text-sm text-zinc-400">{rig.Type}</div>}
-                </button>
-              ))}
-            </div>
-            <button 
-              type="button"
-              onClick={() => setShowRigModal(false)}
-              className="mt-4 px-4 py-2 border border-zinc-700 rounded bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+      <RigPickerModal
+        open={showRigModal}
+        onClose={() => setShowRigModal(false)}
+        onPick={(rig) => {
+          setRigName(rig.name);
+        }}
+      />
       
       {/* Equipment Instance Modal */}
       {showEquipmentModal && (
