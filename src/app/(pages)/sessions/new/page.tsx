@@ -116,35 +116,38 @@ export default function NewSessionPage() {
       return;
     }
     
-    setEquipmentCreateError(null);
     setEquipmentCreating(true);
+    setEquipmentCreateError(null);
     
     try {
       const res = await fetch("/api/equipment/instances/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newEquipmentName,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ 
+          name: newEquipmentName, 
           rigName: selectedRig ? selectedRig.Name : undefined,
           typeName: equipmentTypes.find(t => t.id === newEquipmentType)?.Name || undefined
         }),
       });
       
-      const json = await res.json();
-      if (res.ok && json.ok) {
-        setSelectedEquipmentInstance({ id: json.id, Name: newEquipmentName, SerialNumber: newEquipmentSerial });
-        setShowEquipmentModal(false);
-        setNewEquipmentName("");
-        setNewEquipmentSerial("");
-        setNewEquipmentType("");
-        setNewEquipmentPLCProject("");
-        setEquipmentCreateError(null);
-      } else {
-        setEquipmentCreateError(json.error || `Failed to create equipment (${res.status})`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        setEquipmentCreateError(json?.error || `Create failed (${res.status})`);
+        setEquipmentCreating(false);
+        return;
       }
+      
+      // Success — reflect selection in parent state
+      setSelectedEquipmentInstance({ id: json.id, Name: newEquipmentName, SerialNumber: newEquipmentSerial });
+      setEquipmentCreating(false);
+      // Close modal
+      setShowEquipmentModal(false);
+      setNewEquipmentName("");
+      setNewEquipmentSerial("");
+      setNewEquipmentType("");
+      setNewEquipmentPLCProject("");
     } catch (e: any) {
       setEquipmentCreateError(e?.message || "Network error");
-    } finally {
       setEquipmentCreating(false);
     }
   }
@@ -343,19 +346,15 @@ export default function NewSessionPage() {
                   value={newEquipmentPLCProject}
                   onChange={e => setNewEquipmentPLCProject(e.target.value)}
                 />
-                {equipmentCreateError && (
-                  <div className="text-red-400 text-sm border border-red-700 rounded p-2 bg-red-950/25">
-                    {equipmentCreateError}
-                  </div>
-                )}
                 <button
                   type="button"
                   onClick={createEquipmentInstance}
-                  disabled={!newEquipmentName.trim() || equipmentCreating}
-                  className="w-full px-3 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+                  disabled={equipmentCreating || !newEquipmentName.trim()}
+                  className="w-full px-3 py-1 rounded bg-blue-600 disabled:opacity-60"
                 >
-                  {equipmentCreating ? "Creating..." : "Create Equipment"}
+                  {equipmentCreating ? "Creating…" : "Create"}
                 </button>
+                {equipmentCreateError ? <div className="text-red-400 text-xs mt-1">{equipmentCreateError}</div> : null}
               </div>
             </div>
             

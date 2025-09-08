@@ -29,18 +29,6 @@ export default function DevPage() {
     setOut({ route: '/api/dev/cleanup', ...r });
   }
 
-  async function createDemoEquipment() {
-    const r = await jfetch('/api/equipment/instances/create', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        name: 'DDD',
-        rigName: 'Demo Rig Alpha',
-        typeName: 'TopDrive'
-      })
-    });
-    setOut({ route: '/api/equipment/instances/create', ...r });
-  }
 
   async function runSmoke() {
     // 1) health
@@ -108,7 +96,25 @@ export default function DevPage() {
         <button className="rounded bg-black text-white px-3 py-2" onClick={seedPlus}>Seed v2-pack-plus</button>
         <button className="rounded bg-black text-white px-3 py-2" onClick={health}>Check Health</button>
         <button className="rounded bg-black text-white px-3 py-2" onClick={runSmoke}>Run Smoke (Block-15)</button>
-        <button className="rounded bg-green-600 text-white px-3 py-2" onClick={createDemoEquipment}>Create demo equipment instance (DDD on Demo Rig Alpha)</button>
+        <button
+          className="px-3 py-2 rounded bg-emerald-700"
+          onClick={async ()=>{
+            setOut("creating demo equipment…");
+            try {
+              const r = await fetch("/api/equipment/instances/create", {
+                method:"POST",
+                headers:{ "content-type":"application/json" },
+                body: JSON.stringify({ name:"DDD", rigName:"Demo Rig Alpha", typeName:"TopDrive" }),
+              });
+              const j = await r.json();
+              setOut(JSON.stringify(j, null, 2));
+            } catch(e:any) {
+              setOut(String(e?.message || e));
+            }
+          }}
+        >
+          Create demo equipment (DDD on Demo Rig Alpha)
+        </button>
         <button className="rounded bg-red-600 text-white px-3 py-2" onClick={cleanup}>Cleanup demo sessions</button>
       </div>
       <pre className="whitespace-pre-wrap text-sm opacity-80 border rounded p-3 bg-black/10">
