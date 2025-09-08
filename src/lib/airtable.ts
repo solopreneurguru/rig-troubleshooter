@@ -51,7 +51,7 @@ export function sanitizeFields<T extends Record<string, any>>(fields: T) {
   return out;
 }
 
-function table(tableId?: string) {
+export function table(tableId?: string) {
   if (!base) throw new Error("Airtable base not configured");
   if (!tableId) throw new Error("Airtable table ID not provided");
   return base(tableId);
@@ -69,6 +69,15 @@ export async function findRigByName(name: string) {
   const tbl = table(rigsTableId);
   const records = await tbl.select({ maxRecords: 50 }).firstPage();
   const match = records.find((r) => (r.fields as any).Name === name);
+  return match ? { id: match.id, ...(match.fields as any) } : null;
+}
+
+// Generic findByName function for any table
+export async function findByName(tableId: string, name: string, nameField = "Name") {
+  if (!name || !tableId) return null;
+  const tbl = table(tableId);
+  const records = await tbl.select({ maxRecords: 50 }).firstPage();
+  const match = records.find((r) => (r.fields as any)[nameField] === name);
   return match ? { id: match.id, ...(match.fields as any) } : null;
 }
 

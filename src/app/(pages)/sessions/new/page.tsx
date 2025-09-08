@@ -45,6 +45,8 @@ export default function NewSessionPage() {
   const [newEquipmentSerial, setNewEquipmentSerial] = useState("");
   const [newEquipmentType, setNewEquipmentType] = useState("");
   const [newEquipmentPLCProject, setNewEquipmentPLCProject] = useState("");
+  const [equipmentCreateError, setEquipmentCreateError] = useState<string|null>(null);
+  const [equipmentCreating, setEquipmentCreating] = useState(false);
   
   const router = useRouter();
 
@@ -110,9 +112,12 @@ export default function NewSessionPage() {
   
   async function createEquipmentInstance() {
     if (!newEquipmentName.trim()) {
-      alert("Please enter equipment name");
+      setEquipmentCreateError("Please enter equipment name");
       return;
     }
+    
+    setEquipmentCreateError(null);
+    setEquipmentCreating(true);
     
     try {
       const res = await fetch("/api/equipment/instances/create", {
@@ -120,26 +125,27 @@ export default function NewSessionPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: newEquipmentName,
-          serial: newEquipmentSerial || undefined,
-          typeId: newEquipmentType || undefined,
-          rigId: selectedRig ? selectedRig.id : undefined,
-          plcDocId: newEquipmentPLCProject || undefined
+          rigName: selectedRig ? selectedRig.Name : undefined,
+          typeName: equipmentTypes.find(t => t.id === newEquipmentType)?.Name || undefined
         }),
       });
       
       const json = await res.json();
       if (res.ok && json.ok) {
-        setSelectedEquipmentInstance({ id: json.equipmentId, Name: newEquipmentName, SerialNumber: newEquipmentSerial });
+        setSelectedEquipmentInstance({ id: json.id, Name: newEquipmentName, SerialNumber: newEquipmentSerial });
         setShowEquipmentModal(false);
         setNewEquipmentName("");
         setNewEquipmentSerial("");
         setNewEquipmentType("");
         setNewEquipmentPLCProject("");
+        setEquipmentCreateError(null);
       } else {
-        alert("Failed to create equipment: " + (json.error || res.statusText));
+        setEquipmentCreateError(json.error || `Failed to create equipment (${res.status})`);
       }
-    } catch (e) {
-      alert("Failed to create equipment instance: " + e);
+    } catch (e: any) {
+      setEquipmentCreateError(e?.message || "Network error");
+    } finally {
+      setEquipmentCreating(false);
     }
   }
 
@@ -337,13 +343,18 @@ export default function NewSessionPage() {
                   value={newEquipmentPLCProject}
                   onChange={e => setNewEquipmentPLCProject(e.target.value)}
                 />
+                {equipmentCreateError && (
+                  <div className="text-red-400 text-sm border border-red-700 rounded p-2 bg-red-950/25">
+                    {equipmentCreateError}
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={createEquipmentInstance}
-                  disabled={!newEquipmentName.trim()}
+                  disabled={!newEquipmentName.trim() || equipmentCreating}
                   className="w-full px-3 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
                 >
-                  Create Equipment
+                  {equipmentCreating ? "Creating..." : "Create Equipment"}
                 </button>
               </div>
             </div>
