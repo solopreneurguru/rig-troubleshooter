@@ -1,60 +1,33 @@
-# RulePack v2 Guide
+// docs/30-rulepack-v2.md
+# RulePack v2 — Authoring & Conventions
+**Last updated:** 2025-09-07
 
-**Last updated:** 2025-09-03 03:11 
+## Conventions
+- Key: `<equipment>.<failure>.v2` (e.g., `topdrive.wont_start.v2`)
+- `version: 2` is required; robust detection also treats `Json.version==2` or `.v2` suffix as v2
+- Each actionable node includes **expectations** and **citations** (Doc page, PLC tag, or TestPoint)
+- Safety: use `safetyGate` or set `requireConfirm:true` with a short hazard note
+- Use TestPoint anchors: store `DocRef` + `DocPage`; UI can link like `docId#p=12`
 
-RulePacks define troubleshooting as a directed graph of **typed nodes** with branching and citations.
+## Node types (current)
+- `note` (info), `ask`, `measure`, `safetyGate`, `done`
+### New in Block 15
+- `plcRead` — read a PLC tag/address; show program/block/rung citation; evaluate expectation
+- `photo` — require/allow a photo; attaches to session and shows in report
 
-## Minimal JSON
+## Minimal template (illustrative)
 ```json
 {
-  "key": "topdrive.rpm.low.v2",
+  "key": "topdrive.wont_start.v2",
   "version": 2,
   "equipmentType": "TopDrive",
-  "start": "check_main_contactor",
+  "start": "collect_docs",
   "nodes": {
-    "check_main_contactor": {
-      "type": "measure",
-      "instruction": "Meter: black on A16, red on B12 with RUN command.",
-      "expect": 24,
-      "tolerance": 2,
-      "unit": "VDC",
-      "citation": "Elec schematic p.34; TB A16/B12",
-      "passNext": "check_enable_chain",
-      "failNext": "check_F3_fuse"
-    },
-    "check_F3_fuse": {
-      "type": "safetyGate",
-      "instruction": "De-energize per LOTO. Pull F3 and check continuity <1Ω.",
-      "requireConfirm": true,
-      "hazardNote": "LOTO required; arc-flash PPE.",
-      "citation": "Elec schematic p.12; F3",
-      "passNext": "retest_run_cmd",
-      "failNext": "escalate_electrical"
-    },
-    "done": { "type": "done" }
+    "collect_docs": {"type":"note","subtype":"collectDocs","instruction":"Upload schematics / IO / PLC exports.","passNext":"safety_loto"},
+    "safety_loto": {"type":"safetyGate","instruction":"De-energize per LOTO.","requireConfirm":true,"hazardNote":"Arc-flash / stored energy.","passNext":"first_check","failNext":"done"},
+    "first_check": {"type":"measure","instruction":"Meter black IO14 COM; red TB11-A1 with RUN cmd.","expect":24,"tolerance":2,"unit":"VDC","citation":"Doc p.34; TP:TB11-A1; Sig:I124.3","passNext":"branch_ok","failNext":"check_enable_chain"},
+    "check_enable_chain": {"type":"plcRead","instruction":"Read MainContactorEnable (OB1).","tag":"MainContactorEnable","expect":{"op":"==","value":1},"citation":"PLC OB1 %I0.2","passNext":"photo_panel","failNext":"done"},
+    "photo_panel": {"type":"photo","instruction":"Photo of enable chain relay + F3 fuse.","required":true,"citation":"Electrical p.12","next":"done"},
+    "done": {"type":"done","instruction":"Complete."}
   }
 }
-```
-
-## Node types
-- `measure` — numeric reading; either `expect±tolerance` **or** `min/max`; `unit` recommended
-- `inspect` / `mechanical` / `hydraulic` / `controls` / `note` — procedural checks; capture pass/fail
-- `safetyGate` — requires authenticated tech, LOTO/PPE checkbox, optional note; logs to Action
-- `done` — terminal
-
-## Citations
-Point to document anchors (e.g., `docId#p=34`), PLC **Signals**, or **TestPoints**.
-
-## Endpoints
-- `POST /api/rulepacks/validate` with `{ json }` → schema + graph checks
-- `POST /api/rulepacks/simulate` with `{ json, path }` (dev tool)
-  - Path entries by type:
-    - measure → `{ value: <number>, pass: true|false }`
-    - safetyGate → `{ confirm: true, pass: true }`
-    - others → `{ pass: true|false }`
-
-## Authoring tips
-- Include **lead positions** and **expected ranges**; keep instructions concise.
-- Always include a **citation**.
-- Prefer deterministic thresholds; subjective checks go through `inspect` with crisp criteria.
-- Validate before activating; drafts remain `Active: false` until approved.

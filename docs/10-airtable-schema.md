@@ -1,102 +1,51 @@
+
+```md
+// docs/10-airtable-schema.md
 # Airtable Schema & Setup
+**Last updated:** 2025-09-07
 
-**Last updated:** 2025-09-03 03:11 
+> Base: **Rigs** (`AIRTABLE_BASE_ID=appH75xsvP9HC31Wp`). IDs below are concrete for this project.
 
-_Base name: **Rigs** — system of record for the app._
+## Table IDs
+- **TB_RIGS** = `tbltC4aC86df5xXNo`
+- **TB_DOCS** = `tblqddWAQ1EdZUcbI`
+- **TB_SESSIONS** = `tblXGGqiUedSgvN5f`
+- **TB_ACTIONS** = `tblUp40B937qmBcgU`
+- **TB_READINGS** = `tblXI4w3zE5itTTtn`
+- **TB_FINDINGS** = `tblzgW5PaSoYsWDXO`
+- **TB_RULEPACKS** = `tblK0jbRGgd4MS1ff`
+- **TB_TECHS** = `tblf5WbQNHs356qM0`
+- **TB_EQUIPMENT_TYPES** = `tblNVqtwqxsVrX86C`
+- **TB_EQUIPMENT_INSTANCES** = `tblcnNCsN7NfvdmIP`
+- **TB_COMPONENTS** = `tblRHuLUn52yPJuH2`
+- **TB_SIGNALS** = `tbljX5lDjDOYyErRp`
+- **TB_TESTPOINTS** = `tblZXAGLoYM6RNXDv`
+- **TB_PARTS** = `tblcWhuGTy8UcjEsv`
 
-> **Link fields**: write **string arrays** of record IDs (e.g., `{{ Session: ["rec123"] }}`), **not** `{{ id: ... }}` objects.
+## Core Tables (abridged)
+- **Rigs**: `Name`, `Location`, `Notes`
+- **EquipmentTypes**: `Name`, `Kind`, `OEM`, `Model`, `Docs`
+- **EquipmentInstances**: `Name`, `Rig`, `Type`, `Serial`, `VariantNotes`, `PLCProject`, `CommissionedAt`
+- **Components**: `Name`, `Equipment`, `Parent?`, `Discipline`, `Drawings`
+- **Documents**: `Title`, `DocType`, `BlobURL`, `MimeType`, `SizeBytes`, `Notes`, `Rig?`, `Equipment?`
+- **Sessions**: `Title (Formula)`, `Rig`, `EquipmentInstance`, `Problem`, `FailureMode (SS)`, `Status (SS)`, `CreatedAt`, **`RulePack` (text)**
+  - App reads the chosen pack from the text field named by `SESSIONS_RULEPACK_FIELD` (default `RulePack`)
+- **Actions**: `StepKey`, `Session`, `Instruction`, `Expected`, `Citation`, `Order`, `Result`, `ConfirmedBy`, `ConfirmedAt`, `HazardNote`, `Readings`
+- **Readings**: `Name`, `Action`, `Value`, `Unit`, `PassFail`
+- **Findings**: `Title`, `Session`, `Rig`, `Outcome`, `FailureMode`, `Summary`, `Parts`, `ReportURL`, `Attachments`
+- **RulePacks**: `Key`, `EquipmentType`, `Active (checkbox)`, `Json (long text)`, `Notes`
+- **Techs**: identity/contact; used for confirmations
 
-## Tables & Fields (exact names)
+## Expansion Tables
+- **Signals**: `Tag`, `Equipment`, `Address`, `Unit`, `Description`, `SourceFile`
+- **TestPoints**: `Label`, `Equipment`, `Reference`, `Nominal`, `Unit`, `DocRef`, `DocPage`, `Notes`
+  - Anchors: store `DocRef` + `DocPage`; UI composes `docId#p=<page>` links
 
-### Rigs
-- **Name** (Single line) — primary
-- Optional: **Location** (Single line), **Notes** (Long text)
-
-### Documents
-- **Title** (Single line)
-- **DocType** (Single select) — include: `Photo`, `Manual`, `Electrical`, `Hydraulic`, `PLC`, `Other`
-- **BlobURL** (URL)
-- **MimeType** (Single line)
-- **SizeBytes** (Number)
-- **Notes** (Long text)
-- **Rig** (Link to Rigs) — optional
-- **Session** (Link to Sessions) — optional
-- **CreatedAt** (Created time)
-
-### Sessions
-- **Title** (Single line or formula)
-- **Rig** (Link to Rigs)
-- **Problem** (Single line or Long text)
-- **Status** (Single select: `Open`, `Closed`)
-- **CreatedAt** (Created time)
-- **RulePack** (Single line or Single select) — the field name referenced by env `SESSIONS_RULEPACK_FIELD`
-
-### Actions
-- **Session** (Link to Sessions)
-- **StepKey** (Single line)
-- **Instruction** (Long text)
-- **Expected** (Single line or Number)
-- **Citation** (Single line or Long text)
-- **Order** (Number)
-- **Result** (Single select: `Pending`, `Pass`, `Fail`)
-- **ConfirmedBy** (Link to Techs) — safety confirmation
-- **ConfirmedAt** (Date & time)
-- **HazardNote** (Long text)
-- **CreatedAt** (Created time)
-
-### Readings
-- **Action** (Link to Actions)
-- **Value** (Number or Single line)
-- **Unit** (Single line) — e.g., `VDC`, `VAC`, `mA`, `bar`, `psi`, `ohm`, `deg`, `rpm`, `Hz`
-- **PassFail** (Single select: `Pass`, `Fail`)
-- **CreatedAt** (Created time)
-
-### Findings
-- **Title** (Single line)
-- **Session** (Link to Sessions)
-- **Rig** (Link to Rigs) — optional
-- **Outcome** (Single select) — include exactly: `Resolved`, `Monitor`, `Escalate-Electrical`, `Escalate-Mechanical`, `Escalate-Controls`
-- **Summary** (Long text)
-- **Parts** (Long text)
-- **ReportURL** (URL)
-- **Attachments** (Attachment) — optional
-- **CreatedAt** (Created time)
-
-### RulePacks
-- **Key** (Single line) — e.g., `topdrive.rpm.low` or `topdrive.rpm.low.v2`
-- **EquipmentType** (Single line or Single select e.g., `TopDrive`)
-- **Model** (Single line) — optional
-- **PLCVersion** (Single line) — optional
-- **Active** (Checkbox) — **must be checked** to appear
-- **Json** (Long text) — raw JSON string of the pack
-- **Notes** (Long text) — optional
-
-### Techs
-- **Name** (Single line)
-- **Email** (Single line)
-- **Phone** (Single line) — optional
-- **CreatedAt** (Created time)
-- Tip: set primary field to formula `IF({{Name}},{{Name}},{{Email}})`
-
-### (Planned) EquipmentTypes
-- **Name**, **Kind** (Single select: `TopDrive`, `Drawworks`, `IR`, `PHM`, `MudPump`, `Catwalk`, `Controls`, `HPU`, `Rotary`, `TB/Hook`, `Other`), **OEM**, **Model**, **Docs** (Link → Documents)
-
-### (Planned) EquipmentInstances
-- **Rig** (Link → Rigs), **Type** (Link → EquipmentTypes), **Serial**, **VariantNotes**, **PLCProject** (Link → Documents), **CommissionedAt** (Date)
-
-### (Planned) Components
-- **Equipment** (Link → EquipmentInstances), **Parent** (self-link), **Name**, **Discipline** (Single select: `Electrical`, `Mechanical`, `Hydraulic`, `Controls`), **Drawings** (Link → Documents)
-
-### (Planned) Signals (PLC/VFD I/O catalog)
-- **Equipment** (Link → EquipmentInstances), **Tag**, **Address**, **Unit**, **Description**, **SourceFile**
-
-### (Planned) TestPoints (terminals)
-- **Equipment** (Link → EquipmentInstances), **Label** (`TB3-2`, `A16`), **Reference** (`COM`, `B12`), **Nominal** (Number), **Unit** (Single select), **DocRef** (Link → Documents)
-
-## Env → Table ID Map
-- `TB_RIGS`, `TB_DOCS`, `TB_SESSIONS`, `TB_ACTIONS`, `TB_READINGS`, `TB_FINDINGS`, `TB_RULEPACKS`, `TB_TECHS`
-- `SESSIONS_RULEPACK_FIELD` → name of the Sessions field storing the chosen rulepack key
-
-## Gotchas & Tips
-- Pre-create **single-select** options exactly as used by the app (case & hyphen sensitive).
-- Verify at `/api/env` and `/api/airtable/health` after any token or schema change.
+## Conventions & write guards
+- Never write computed (Formula/Lookup/Rollup) fields
+- **Sessions.Title** is a Formula; do not send Title in API writes
+- Keep select options centralized; don’t add new options at write time
+- Use env:  
+  - `SESSIONS_RULEPACK_FIELD=RulePack`  
+  - `SESSIONS_EQUIPMENT_FIELD=Equipment`  
+  - `EQUIPINSTANCES_TYPE_FIELD=Type`

@@ -5,7 +5,8 @@ const TOKEN = process.env.ADMIN_DEV_TOKEN || '';
 async function jfetch(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
   if (TOKEN && !headers['x-admin-token']) headers['x-admin-token'] = TOKEN;
-  const res = await fetch(APP + path, { ...opts, headers });
+  const url = new URL(path, APP).toString();
+  const res = await fetch(url, { ...opts, headers });
   const text = await res.text();
   let json; try { json = JSON.parse(text); } catch { json = { raw: text }; }
   return { ok: res.ok, status: res.status, json };
@@ -34,42 +35,63 @@ function tinyPng() {
     if ((r.json.rulepacks?.v2 ?? 0) === 0) throw new Error('v2 still 0 after seed');
   }
 
-  // 3) Create admin session targeting demo v2
-  const cs = await jfetch('/api/admin/session', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ problem: 'TopDrive won't start', rulePackKey: 'demo.topdrive.block15.v2' })
-  });
-  console.log('create session:', cs.status, cs.json);
-  if (!cs.ok) throw new Error('create session failed');
-  const sessionId = cs.json.sessionId;
+  // 3) Try admin session endpoint first (if deployed)
+  let cs, sessionId;
+  try {
+    cs = await jfetch('/api/admin/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ problem: 'TopDrive won\'t start', rulePackKey: 'demo.topdrive.block15.v2' })
+    });
+    console.log('admin create session:', cs.status, cs.json);
+    if (cs.ok) {
+      sessionId = cs.json.sessionId;
+    } else {
+      throw new Error('Admin endpoint not available');
+    }
+  } catch (e) {
+    console.log('Admin endpoint failed, falling back to regular session creation');
+    // Fallback to regular session creation
+    cs = await jfetch('/api/sessions/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ problem: 'TopDrive won\'t start' })
+    });
+    console.log('create session:', cs.status, cs.json);
+    if (!cs.ok) throw new Error('create session failed');
+    sessionId = cs.json.id;
+
+    // Update session to use demo v2 pack
+    const update = await jfetch('/api/sessions/update', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: sessionId, patch: { RulePack: 'demo.topdrive.block15.v2' } })
+    });
+    console.log('update session:', update.status, update.json);
+    if (!update.ok) throw new Error('update session failed');
+    
+    // Wait a moment for the update to propagate
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
 
   // 4) Next -> plc_read
-  let step = await jfetch('/api/plan/v2/next', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ sessionId })
-  });
+  let step = await jfetch(`/api/plan/v2/next?sessionId=${encodeURIComponent(sessionId)}`);
   console.log('next #1:', step.status, step.json);
-  if (!step.ok || step.json.kind !== 'plc_read') throw new Error('expected plc_read');
+  if (!step.ok || step.json.step?.kind !== 'plc_read') throw new Error('expected plc_read');
 
   // 5) Submit plc_read pass
   const sub1 = await jfetch('/api/plan/v2/submit', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ sessionId, stepId: step.json.id || 'plc_enable_chain', type: 'plc_read', plcResult: '1' })
+    body: JSON.stringify({ sessionId, stepId: step.json.step?.id || 'plc_enable_chain', type: 'plc_read', plcResult: '1' })
   });
   console.log('submit plc_read:', sub1.status, sub1.json);
   if (!sub1.ok) throw new Error('submit plc_read failed');
 
   // 6) Next -> photo
-  step = await jfetch('/api/plan/v2/next', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ sessionId })
-  });
+  step = await jfetch(`/api/plan/v2/next?sessionId=${encodeURIComponent(sessionId)}`);
   console.log('next #2:', step.status, step.json);
-  if (!step.ok || step.json.kind !== 'photo') throw new Error('expected photo');
+  if (!step.ok || step.json.step?.kind !== 'photo') throw new Error('expected photo');
 
   // 7) Upload tiny PNG to Blob
   const fd = new FormData();
@@ -83,7 +105,7 @@ function tinyPng() {
   const sub2 = await jfetch('/api/plan/v2/submit', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ sessionId, stepId: step.json.id || 'photo_panel', type: 'photo', photoUrl: upJson.url })
+    body: JSON.stringify({ sessionId, stepId: step.json.step?.id || 'photo_panel', type: 'photo', photoUrl: upJson.url })
   });
   console.log('submit photo:', sub2.status, sub2.json);
   if (!sub2.ok) throw new Error('submit photo failed');

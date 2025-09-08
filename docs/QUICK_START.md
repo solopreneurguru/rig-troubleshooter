@@ -1,86 +1,57 @@
+// docs/QUICK_START.md
 # Quick Start
+**Last updated:** 2025-09-07
 
-**Last updated:** 2025-09-03
-
-New to the project? Start here.
-
-## What this is
-Rig Troubleshooter is a Next.js app (Vercel) with Airtable as the system of record and Vercel Blob for file storage. It guides rig technicians through diagnostic steps, records readings, enforces safety gates, and produces a PDF finding report.
+Rig Troubleshooter is a Next.js app (Vercel) with Airtable as system of record and Vercel Blob for file storage. It guides technicians through diagnostic steps, enforces safety gates, records readings, and produces a PDF finding report.
 
 ## Prerequisites
-- Node.js 18+ (20/22 OK)
-- `pnpm` or `npm`
-- Vercel CLI (`npm i -g vercel`) — optional but recommended
-- Airtable Personal Access Token with scopes: `data.records:read`, `data.records:write`, `schema.bases:read` (and access to the **Rigs** base)
+- Node 18+ (20/22 OK), pnpm or npm
+- Airtable PAT with access to the **Rigs** base
+- Vercel project with env vars configured
 
-## Clone & install
-```bash
-git clone <your-repo-url> rig-troubleshooter
-cd rig-troubleshooter
-pnpm i   # or npm i
-```
+## Environment (.env.local)
+# IDs (safe to commit in example)
+AIRTABLE_BASE_ID=appH75xsvP9HC31Wp
+TB_RIGS=tbltC4aC86df5xXNo
+TB_DOCS=tblqddWAQ1EdZUcbI
+TB_SESSIONS=tblXGGqiUedSgvN5f
+TB_ACTIONS=tblUp40B937qmBcgU
+TB_READINGS=tblXI4w3zE5itTTtn
+TB_FINDINGS=tblzgW5PaSoYsWDXO
+TB_RULEPACKS=tblK0jbRGgd4MS1ff
+TB_TECHS=tblf5WbQNHs356qM0
+TB_EQUIPMENT_TYPES=tblNVqtwqxsVrX86C
+TB_EQUIPMENT_INSTANCES=tblcnNCsN7NfvdmIP
+TB_COMPONENTS=tblRHuLUn52yPJuH2
+TB_SIGNALS=tbljX5lDjDOYyErRp
+TB_TESTPOINTS=tblZXAGLoYM6RNXDv
+TB_PARTS=tblcWhuGTy8UcjEsv
 
-## Environment
-Create `.env.local` in the repo root with:
-```
-AIRTABLE_API_KEY=patXXXXXXXX
-AIRTABLE_BASE_ID=appXXXXXXXX
-TB_RIGS=tblXXXXXXXX
-TB_DOCS=tblXXXXXXXX
-TB_SESSIONS=tblXXXXXXXX
-TB_ACTIONS=tblXXXXXXXX
-TB_READINGS=tblXXXXXXXX
-TB_FINDINGS=tblXXXXXXXX
-TB_RULEPACKS=tblXXXXXXXX
-TB_TECHS=tblXXXXXXXX
-SESSIONS_RULEPACK_FIELD=RulePack     # name of Sessions field storing the chosen pack key
-BLOB_READ_WRITE_TOKEN=vercel_blob_rw_token
-```
-> Verify env in the app: open `/api/env` and ensure each shows **✓ set**.
+# Field name envs (non-secret)
+SESSIONS_RULEPACK_FIELD=RulePack
+SESSIONS_EQUIPMENT_FIELD=Equipment
+EQUIPINSTANCES_TYPE_FIELD=Type
+
+# Secrets (leave blank locally; set in Vercel)
+AIRTABLE_API_KEY=
+BLOB_READ_WRITE_TOKEN=
+ADMIN_DEV_TOKEN=
 
 ## Run locally
-```bash
-pnpm dev   # or npm run dev
-# visit http://localhost:3000
-```
+pnpm i
+pnpm dev   # http://localhost:3000
 
-## Five-minute smoke test (local or prod)
-1) `GET /api/env` → all keys “✓ set” (esp. `TB_RULEPACKS`, `TB_TECHS`, `SESSIONS_RULEPACK_FIELD`)
-2) `GET /api/rulepacks/list` → at least one **Active** pack (e.g., `topdrive.rpm.low.v2`)
-3) `/sessions/new` → choose a RulePack and create a session
-4) StepCard → enter a reading + pass/fail → next step appears
-5) If a **safetyGate** step appears, sign in from the header Tech menu; confirm LOTO/PPE → continue
-6) Finish → create a Finding → PDF ReportURL available
+## Five-minute smoke (prod or local with env set)
+1) `GET /api/health` → ok + `rulepacks.v2 >= 1`
+2) `/sessions/new` → create/select equipment; auto-select pack or **Override**
+3) Run steps: SafetyGate (if present) → measure/ask/info → pass/fail branches
+4) Create Finding → verify ReportURL + email (if automation enabled)
 
 ## Working with RulePacks
-- Add a row in **RulePacks** with `Key`, `Active: ✓`, and **Json** (valid JSON).
-- Dev validation: `POST /api/rulepacks/validate` with body `{ "json": <your pack> }`
-- Dev simulation: `POST /api/rulepacks/simulate` with `{ "json": <pack>, "path": [...] }`
-> Production may be protected by Vercel; test via local dev or use the bypass cookie URL if enabled.
+- Add row in **RulePacks** with `Key`, `Active: ✓`, and JSON field `Json` (valid JSON)
+- v2 authoring uses typed nodes and requires **citations** (Doc page/PLC/TestPoint). See `30-rulepack-v2.md`
 
-## Deployment (Vercel)
-```bash
-git add -A && git commit -m "feat/fix: <message>" && git push
-vercel          # Preview
+## Deploy (Vercel)
+git add -A && git commit -m "feat/fix: <message>" && git push  
+vercel          # Preview  
 vercel --prod   # Production
-```
-- In Vercel → Project → **Environment Variables**: set the same keys as `.env.local` for **Development**, **Preview**, and **Production**.
-- After deploy, run the smoke test again.
-
-## Common issues
-- **Airtable select permission error**: pre-create select options in Airtable to match app values exactly.
-- **No rulepacks in UI**: ensure `Active` is checked and `Json` is valid JSON.
-- **Tech confirm not showing**: `TB_TECHS` must be set; Techs table must include **Email**; Actions table must have `ConfirmedBy/At` fields.
-- **401/403 on prod API**: Vercel protection is likely enabled; disable temporarily or use bypass cookie.
-
-## Handoff blurb for a fresh chat
-> “Join the ‘Rig Troubleshooter’ project. Read `/docs/README.md` and the Markdown docs in `/docs`. Verify env via `/api/env`, confirm `/api/rulepacks/list` returns at least one Active pack, then help continue from `/docs/50-roadmap.md`. Stack: Next.js 15, Airtable, Vercel Blob, safety gating, RulePack v2.”
-
-
-## Environment variables
-<!-- AUTOGEN:ENV-START -->
-> _autogenerated 2025-09-03 04:07:03Z_
-| Variable | Requirement |
-|---|---|
-| (none found) | |
-<!-- AUTOGEN:ENV-END -->

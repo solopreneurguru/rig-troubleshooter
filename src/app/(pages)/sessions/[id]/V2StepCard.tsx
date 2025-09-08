@@ -4,6 +4,7 @@ import { Citations } from "@/components/Citations";
 import { PlcReadCard } from "@/components/PlcReadCard";
 import { PhotoCard } from "@/components/PhotoCard";
 import { uploadToBlob } from "@/lib/upload";
+import { normalizeCitations } from "@/lib/citations";
 
 export default function V2StepCard({ sessionId, nodeKey, node, onSubmitted }:{
   sessionId: string; 
@@ -42,11 +43,21 @@ export default function V2StepCard({ sessionId, nodeKey, node, onSubmitted }:{
 
   // SafetyGate rendering
   if (node.type === "safetyGate") {
+    const citations = normalizeCitations(node.citations ?? node.citation);
     return (
       <div className="rounded-lg border border-red-700 bg-red-900/20 p-4 text-red-100">
         <div className="font-semibold mb-1">Safety Confirmation Required</div>
         {node.hazardNote && <div className="text-sm opacity-80 mb-2">{node.hazardNote}</div>}
         <div className="mb-3">{node.text}</div>
+        {citations?.length ? (
+          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+            {citations.map((c, i) => (
+              <span key={i} className="px-2 py-0.5 rounded border border-neutral-700">
+                {c.type === "doc" ? `Doc${c.page ? ` p.${c.page}` : ""}` : c.type === "plc" ? `PLC ${c.tag}` : `TP ${c.label}`}
+              </span>
+            ))}
+          </div>
+        ) : null}
         <label className="flex items-center gap-2 my-2">
           <input type="checkbox" className="h-4 w-4" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />
           <span>I confirm LOTO/PPE per procedure and it is safe to proceed.</span>
@@ -64,6 +75,7 @@ export default function V2StepCard({ sessionId, nodeKey, node, onSubmitted }:{
 
   // Measure rendering with branching info
   if (node.type === "measure") {
+    const citations = normalizeCitations(node.citations ?? node.citation);
     return (
       <div className="rounded-lg border border-blue-700 bg-blue-900/20 p-4 text-blue-100">
         <div className="font-semibold mb-1">Measurement</div>
@@ -73,6 +85,15 @@ export default function V2StepCard({ sessionId, nodeKey, node, onSubmitted }:{
             OK if {node.okIf.op} {node.okIf.value} {node.unit || ""}
           </div>
         )}
+        {citations?.length ? (
+          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+            {citations.map((c, i) => (
+              <span key={i} className="px-2 py-0.5 rounded border border-neutral-700">
+                {c.type === "doc" ? `Doc${c.page ? ` p.${c.page}` : ""}` : c.type === "plc" ? `PLC ${c.tag}` : `TP ${c.label}`}
+              </span>
+            ))}
+          </div>
+        ) : null}
         <div className="flex items-center gap-2">
           <input
             type="number"
@@ -126,11 +147,21 @@ export default function V2StepCard({ sessionId, nodeKey, node, onSubmitted }:{
   }
 
   if (node.kind === "info") {
+    const citations = normalizeCitations(node.citations ?? node.citation);
     return (
       <div className="rounded-2xl p-4 shadow">
         <div className="font-semibold mb-2">Information</div>
         <div className="mb-3">{node.markdown || node.text}</div>
         <Citations items={node.citations} />
+        {citations?.length ? (
+          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+            {citations.map((c, i) => (
+              <span key={i} className="px-2 py-0.5 rounded border border-neutral-700">
+                {c.type === "doc" ? `Doc${c.page ? ` p.${c.page}` : ""}` : c.type === "plc" ? `PLC ${c.tag}` : `TP ${c.label}`}
+              </span>
+            ))}
+          </div>
+        ) : null}
         <div className="mt-3">
           <button 
             className="bg-black text-white rounded px-4 py-2" 
@@ -144,11 +175,21 @@ export default function V2StepCard({ sessionId, nodeKey, node, onSubmitted }:{
   }
 
   // Default rendering for legacy info, ask, end
+  const citations = normalizeCitations(node.citations ?? node.citation);
   return (
     <div className="rounded-2xl p-4 shadow">
       <div className="font-semibold mb-2">Active Step</div>
       <div className="mb-3">{node.text}</div>
       <Citations items={node.citations} />
+      {citations?.length ? (
+        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+          {citations.map((c, i) => (
+            <span key={i} className="px-2 py-0.5 rounded border border-neutral-700">
+              {c.type === "doc" ? `Doc${c.page ? ` p.${c.page}` : ""}` : c.type === "plc" ? `PLC ${c.tag}` : `TP ${c.label}`}
+            </span>
+          ))}
+        </div>
+      ) : null}
       
       {node.type === "ask" && (
         <div className="flex gap-2">

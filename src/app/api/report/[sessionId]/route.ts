@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Document, Page, Text, View, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import { getSessionBundle } from "@/lib/airtable";
 import { put } from "@vercel/blob";
+import { normalizeCitations } from "@/lib/citations";
 import React from "react";
 
 export const runtime = "nodejs";
@@ -25,19 +26,21 @@ function ReportDoc({ data }: any) {
       React.createElement(View, { style: styles.row }, React.createElement(Text, null, `Rig: ${rig?.Name || "(not linked)"}  |  Status: ${session?.Status || ""}`)),
       
       React.createElement(Text, { style: styles.h2 }, "Steps & Readings"),
-      ...(actions?.map((a: any, i: number) => 
-        React.createElement(View, { key: a.id, wrap: false, style: { marginBottom: 6 } },
+      ...(actions?.map((a: any, i: number) => {
+        const citations = normalizeCitations(a.Citations ?? a.Citation);
+        return React.createElement(View, { key: a.id, wrap: false, style: { marginBottom: 6 } },
           React.createElement(Text, null, `#${a.Order ?? i+1}  ${a.StepKey} — ${a.Instruction}`),
           a.Expected ? React.createElement(Text, null, `Expected: ${a.Expected}`) : null,
           a.Citation ? React.createElement(Text, null, `Citation: ${a.Citation}`) : null,
           a.Citations ? React.createElement(Text, null, `Citations: ${JSON.stringify(a.Citations)}`) : null,
+          citations.length > 0 ? React.createElement(Text, null, `Citations: ${citations.map(c => c.type === "doc" ? `Doc${c.page ? ` p.${c.page}` : ""}` : c.type === "plc" ? `PLC ${c.tag}` : `TP ${c.label}`).join(", ")}`) : null,
           a.PlcResult ? React.createElement(Text, null, `PLC Result: ${a.PlcResult}`) : null,
           a.PhotoUrl ? React.createElement(Text, null, `Photo: ${a.PhotoUrl}`) : null,
           ...(a.readings?.map((r: any, j: number) =>
             React.createElement(Text, { key: j, style: styles.mono }, `Reading: ${r.Value || ""} ${r.Unit || ""}  Result: ${r.PassFail || ""}`)
           ) || [])
-        )
-      ) || [])
+        );
+      }) || [])
     )
   );
 }

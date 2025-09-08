@@ -5,6 +5,8 @@ import { FINDING_OUTCOMES, SESSIONS_RULEPACK_FIELD } from "@/lib/airtable";
 import { loadRightRailData } from "@/lib/air-find";
 import { isV2Pack } from "@/lib/rulepacks";
 import V2StepCard from "./V2StepCard";
+import { normalizeCitations } from "@/lib/citations";
+import CitationsPanel from "@/components/CitationsPanel";
 
 type Step = { 
   key: string; 
@@ -346,6 +348,18 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
           <p className="text-base">{step.instruction}</p>
           {step.expect && <p className="text-sm opacity-80"><strong>Expect:</strong> {step.expect}</p>}
           {step.citation && <p className="text-xs opacity-60"><strong>Why:</strong> {step.citation}</p>}
+          {(() => {
+            const citations = normalizeCitations(step.citation);
+            return citations?.length ? (
+              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                {citations.map((c, i) => (
+                  <span key={i} className="px-2 py-0.5 rounded border border-neutral-700">
+                    {c.type === "doc" ? `Doc${c.page ? ` p.${c.page}` : ""}` : c.type === "plc" ? `PLC ${c.tag}` : `TP ${c.label}`}
+                  </span>
+                ))}
+              </div>
+            ) : null;
+          })()}
           
           {step.hazardNote && (
             <div className="rounded-lg border border-amber-400 bg-amber-50 text-amber-900 dark:bg-amber-200 dark:text-amber-900 px-4 py-3">
@@ -492,6 +506,17 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
       </div>
       
       <aside className="col-span-4 space-y-4">
+        {/* Citations Panel */}
+        {(() => {
+          const currentCitations = isV2 && v2Node 
+            ? normalizeCitations(v2Node.citations ?? v2Node.citation)
+            : !isV2 && step 
+            ? normalizeCitations(step.citation)
+            : [];
+          const equipmentId = rr.testpoints.length > 0 ? rr.testpoints[0].fields.Equipment?.[0] : undefined;
+          return <CitationsPanel citations={currentCitations} equipmentId={equipmentId} />;
+        })()}
+        
         <section>
           <h3 className="font-semibold">Docs / Test Points</h3>
           <ul className="text-sm">
