@@ -18,7 +18,7 @@ export default function DevPage() {
   async function seedPlus() {
     const headers: Record<string, string> = {};
     if (isProd) {
-      const storedToken = localStorage.getItem('ADMIN_DEV_TOKEN') || token;
+      const storedToken = (typeof window !== 'undefined' ? localStorage.getItem('ADMIN_DEV_TOKEN') : null) || token;
       if (!storedToken) {
         setOut({ error: "Token required in production. Set ADMIN_DEV_TOKEN first." });
         return;
@@ -131,7 +131,7 @@ export default function DevPage() {
         </div>
       )}
       
-      <DebugPanel adminToken={isProd ? (localStorage.getItem('ADMIN_DEV_TOKEN') || token) : undefined} />
+      <DebugPanel adminToken={isProd ? ((typeof window !== 'undefined' ? localStorage.getItem('ADMIN_DEV_TOKEN') : null) || token) : undefined} />
       
       <div className="flex flex-wrap gap-2">
         <button className="rounded bg-black text-white px-3 py-2" onClick={seedPlus}>Seed v2 pack (plus)</button>
@@ -163,7 +163,7 @@ export default function DevPage() {
             try {
               const headers: Record<string, string> = { "content-type": "application/json" };
               if (isProd) {
-                const storedToken = localStorage.getItem('ADMIN_DEV_TOKEN') || token;
+                const storedToken = (typeof window !== 'undefined' ? localStorage.getItem('ADMIN_DEV_TOKEN') : null) || token;
                 if (storedToken) headers.Authorization = `Bearer ${storedToken}`;
               } else {
                 headers.Authorization = 'Bearer Cooper';
