@@ -1,19 +1,22 @@
 import Airtable from 'airtable';
 import { withDeadline } from './deadline';
 
-const API_KEY = process.env.AIRTABLE_API_KEY!;
-const BASE_ID = process.env.AIRTABLE_BASE_ID!;
-if (!API_KEY || !BASE_ID) throw new Error('Airtable env missing');
-
-const base = new Airtable({
-  apiKey: API_KEY,
-  endpointUrl: 'https://api.airtable.com',
-  requestTimeout: 8000, // SDK's own timeout (we'll also guard with withDeadline)
-}).base(BASE_ID);
+function getBase() {
+  const API_KEY = process.env.AIRTABLE_API_KEY!;
+  const BASE_ID = process.env.AIRTABLE_BASE_ID!;
+  if (!API_KEY || !BASE_ID) throw new Error('Airtable env missing');
+  
+  return new Airtable({
+    apiKey: API_KEY,
+    endpointUrl: 'https://api.airtable.com',
+    requestTimeout: 8000, // SDK's own timeout (we'll also guard with withDeadline)
+  }).base(BASE_ID);
+}
 
 // ---- Helpers that ONLY use the SDK (no REST bypass) ----
 
 export async function rigsFirstPage() {
+  const base = getBase();
   const table = process.env.TB_RIGS!;
   const sel = base(table).select({
     fields: ['Name'],
@@ -25,6 +28,7 @@ export async function rigsFirstPage() {
 }
 
 export async function findRecordIdByName(tableId: string, name: string) {
+  const base = getBase();
   const safe = String(name ?? '').replace(/'/g, "\\'");
   const formula = `LOWER({Name}) = LOWER('${safe}')`;
   const sel = base(tableId).select({ filterByFormula: formula, fields: ['Name'], pageSize: 1 });
@@ -39,6 +43,7 @@ export async function createEquipmentViaSdk(opts: {
   serial?: string;
   plcDocUrl?: string;
 }) {
+  const base = getBase();
   const table = process.env.TB_EQUIPMENT_INSTANCES!;
   const fields: any = { Name: opts.name };
 
@@ -62,6 +67,7 @@ export async function createEquipmentViaSdk(opts: {
 }
 
 export async function createSessionViaSdk(fields: Record<string, any>) {
+  const base = getBase();
   const table = process.env.TB_SESSIONS!;
   const res = await withDeadline(
     base(table).create([{ fields }], { typecast: true }),
