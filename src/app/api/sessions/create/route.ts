@@ -1,34 +1,31 @@
 import { NextResponse } from 'next/server';
-import { withDeadline, logStart } from '@/lib/deadline';
-import { createSession } from '@/lib/airtable'; // use existing
+import { createSessionViaSdk } from '@/lib/airtableSdk';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const preferredRegion = 'iad1';
 
 export async function POST(req: Request) {
-  const end = logStart('sessions/create');
   try {
-    const { problem, equipId, rigId } = await req.json().catch(() => ({}));
-    const text = (problem||'').trim();
-    if (text.length < 3) return NextResponse.json({ ok:false, error:'problem required' }, { status: 422 });
+    const body = await req.json().catch(() => ({}));
+    const problem = String(body?.problem ?? '').trim();
+    const equipmentId = body?.equipmentId ? String(body.equipmentId) : undefined;
 
-    // Keep the minimum write set; other fields attach later
-    const id = await withDeadline(
-      createSession('', text, rigId, undefined, equipId, undefined),
-      9000,
-      'sessions/create'
-    );
+    if (problem.length < 3) {
+      return NextResponse.json({ ok:false, error:'problem (min 3 chars) required' }, { status: 422 });
+    }
 
-    end();
-    return NextResponse.json({ ok:true, id, redirect:`/sessions/${encodeURIComponent(id)}` }, { status: 201 });
+    const fields: Record<string, any> = {
+      Title: `Session ${new Date().toISOString()}`,
+      Problem: problem,
+      Status: 'Open',
+    };
+    if (equipmentId) fields.Equipment = [equipmentId];
+
+    const id = await createSessionViaSdk(fields);
+    return NextResponse.json({ ok:true, id, redirect:`/sessions/${id}` }, { status: 201 });
   } catch (e: any) {
-    end();
-    console.error('[api] sessions/create error', { error: e?.message || String(e) });
+    console.error('[api] sessions/create', e?.message || e);
     return NextResponse.json({ ok:false, error: e?.message || 'timeout' }, { status: 503 });
   }
-}
-
-// Keep method guarders if you want:
-export async function GET() {
-  return NextResponse.json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
 }

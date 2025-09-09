@@ -1,22 +1,19 @@
-export async function withDeadline<T>(
-  p: Promise<T>,
-  ms: number,
-  label = 'op'
-): Promise<T> {
-  const ctrl = AbortSignal.timeout(ms);
-  // Let caller pass in fetch signals if needed; this is a hard cap.
-  const hardCap = new Promise<never>((_, rej) =>
-    ctrl.addEventListener('abort', () =>
-      rej(new Error(`deadline(${label}) ${ms}ms`))
-    )
+/**
+ * Small helpers to bound async work and log durations.
+ */
+export async function withDeadline<T>(p: Promise<T>, ms: number, label = 'op'): Promise<T> {
+  // AbortSignal.timeout exists in Node 18+; we still race manually to keep types simple.
+  const sig = AbortSignal.timeout(ms);
+  const gate = new Promise<never>((_, rej) =>
+    sig.addEventListener('abort', () => rej(new Error(`deadline ${label} ${ms}ms`)))
   );
-  return Promise.race([p, hardCap]) as Promise<T>;
+  return Promise.race([p, gate]) as Promise<T>;
 }
 
-export function since(t0: number) { return `${Date.now() - t0}ms`; }
+export const since = (t0: number) => `${Date.now() - t0}ms`;
 
 export function logStart(label: string, extra: Record<string, unknown> = {}) {
   const t0 = Date.now();
-  console.log(`[api] ▶ ${label}`, { ...extra, t0 });
+  console.log(`[api] ▶ ${label}`, { t0, ...extra });
   return () => console.log(`[api] ◀ ${label}`, { dur: since(t0), ...extra });
 }

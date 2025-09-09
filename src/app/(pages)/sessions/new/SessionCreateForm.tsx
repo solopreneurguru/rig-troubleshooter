@@ -1,69 +1,64 @@
 "use client";
-import { useState } from "react";
+import React from "react";
 import { useRouter } from "next/navigation";
 
-interface SessionCreateFormProps {
-  rigId?: string;
-  equipmentId?: string;
-}
-
-export default function SessionCreateForm({ 
-  rigId, 
-  equipmentId 
-}: SessionCreateFormProps) {
+export default function SessionCreateForm() {
   const router = useRouter();
-  const [problem, setProblem] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string|null>(null);
-  const [status, setStatus] = useState<string>("");
+  const [problem, setProblem] = React.useState("");
+  const [equipmentId, setEquipmentId] = React.useState<string | undefined>();
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+  const [status, setStatus] = React.useState<string>("");
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
-    if (!problem.trim()) {
-      setError("Please describe the problem.");
-      return;
-    }
-    
-    setSubmitting(true);
-    setError(null);
-    setStatus('Posting…');
+    setErr(null);
+    setStatus("Posting…");
+    setBusy(true);
     try {
-      const res = await fetch('/api/sessions/create', {
-        method:'POST',
-        headers:{'content-type':'application/json'},
-        body: JSON.stringify({ problem: problem.trim(), equipId: equipmentId || undefined, rigId: rigId || undefined }),
-        signal: AbortSignal.timeout(9000)
+      const res = await fetch("/api/sessions/create", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ problem, equipmentId }),
+        signal: AbortSignal.timeout(9000),
       });
-      const j = await res.json().catch(()=>null);
-      if (!res.ok || !j?.ok) throw new Error(j?.error || `HTTP ${res.status}`);
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j?.ok) {
+        setErr(j?.error || `HTTP ${res.status}`);
+        setStatus("");
+        setBusy(false);
+        return;
+      }
       setStatus(`Created ${j.id}`);
-      window.location.href = j.redirect || `/sessions/${encodeURIComponent(j.id)}`;
-    } catch (e:any) {
-      const msg = e?.message?.includes('timeout') ? 'Request timed out (9s). Try again.' : (e?.message || 'Failed');
-      setError(msg);
-      setStatus(msg);
-    } finally {
-      setSubmitting(false);
+      // hard nav to guarantee route hydration after create
+      window.location.href = j.redirect || `/sessions/${j.id}`;
+    } catch (e: any) {
+      setErr(e?.message?.includes("deadline") ? "Request timed out (9s). Try again." : (e?.message || "Network error"));
+      setStatus("");
+      setBusy(false);
     }
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="space-y-3">
-      <label className="block text-sm text-neutral-400" htmlFor="problem">Problem Description *</label>
+    <form onSubmit={onSubmit} className="space-y-3">
+      <label className="block text-sm opacity-75">Problem Description *</label>
       <textarea
-        id="problem"
-        name="problem"
+        className="w-full rounded bg-neutral-900 p-3"
         value={problem}
-        onChange={(e)=>setProblem(e.target.value)}
-        placeholder="Describe your issue and equipment in detail..."
-        className="w-full min-h-[120px] rounded border border-neutral-700 bg-neutral-900 p-3"
+        onChange={(e) => setProblem(e.target.value)}
+        placeholder="Describe your issue and equipment in detail…"
         required
+        minLength={3}
       />
-      {error ? <div className="text-red-400 text-sm border border-red-700 rounded p-2 bg-red-950/25">{error}</div> : null}
-      <div className="text-xs text-neutral-400">{status}</div>
-      <button type="submit" disabled={submitting} className="px-4 py-2 rounded bg-blue-600 disabled:opacity-60">
-        {submitting ? "Creating…" : "Create Session"}
+      {/* equipment picker wiring remains the same; it only needs to set equipmentId */}
+      <div className="text-xs opacity-70">{status}</div>
+      {err && <div className="text-red-400 text-sm">❌ {err}</div>}
+      <button
+        type="submit"
+        disabled={busy}
+        className="px-3 py-2 rounded bg-emerald-700 disabled:opacity-60"
+      >
+        {busy ? "Creating…" : "Create Session"}
       </button>
     </form>
   );
