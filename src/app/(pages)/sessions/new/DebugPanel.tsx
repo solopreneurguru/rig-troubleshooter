@@ -1,6 +1,5 @@
 'use client';
 import { useState } from 'react';
-import { fetchWithTimeout } from '@/lib/http';
 
 export default function DebugPanel() {
   const [results, setResults] = useState<any>({});
@@ -20,15 +19,15 @@ export default function DebugPanel() {
 
   const tests = {
     'Ping': async () => {
-      const response = await fetchWithTimeout('/api/_diag/ping', {}, 5000);
+      const response = await fetch('/api/_diag/ping');
       return await response.json();
     },
     'Airtable quick check': async () => {
-      const response = await fetchWithTimeout('/api/_diag/airtable', {}, 10000);
+      const response = await fetch('/api/_diag/airtable');
       return await response.json();
     },
     'Health': async () => {
-      const response = await fetchWithTimeout('/api/health', {}, 5000);
+      const response = await fetch('/api/health');
       return await response.json();
     }
   };

@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SessionCreateForm from "./SessionCreateForm";
-import { fetchWithTimeout } from "@/lib/http";
 import DebugPanel from "./DebugPanel";
 
 type RigRow = { id: string; name: string };
@@ -19,14 +18,16 @@ function RigPickerModal({
   const [loading, setLoading] = useState(false);
   const [rigs, setRigs] = useState<RigRow[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
 
-  const fetchRigs = async (attempt = 1) => {
+  const fetchRigs = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      const response = await fetchWithTimeout("/api/rigs/list", {}, 10000); // 10s timeout
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 9000);
+      const response = await fetch("/api/rigs/list", { signal: ctrl.signal });
+      clearTimeout(timeoutId);
       const data = await response.json().catch(() => ({}));
       
       if (!response.ok || !data?.ok) {
@@ -36,21 +37,12 @@ function RigPickerModal({
       
       const rigList = Array.isArray(data.rigs) ? data.rigs : [];
       setRigs(rigList);
-      setRetryCount(0); // Reset retry count on success
     } catch (e: any) {
       const errorMsg = e.name === 'AbortError' 
         ? "Unable to load rigs (timeout)" 
         : (e.message || String(e));
       
       setError(errorMsg);
-      
-      // Auto-retry once if it's a timeout and we haven't retried yet
-      if (e.name === 'AbortError' && attempt === 1 && retryCount === 0) {
-        console.log("[create-flow] Auto-retrying rigs fetch...");
-        setRetryCount(1);
-        setTimeout(() => fetchRigs(2), 1000); // Retry after 1s
-        return;
-      }
     } finally {
       setLoading(false);
     }
@@ -71,11 +63,11 @@ function RigPickerModal({
         {loading && <div className="text-sm text-neutral-300">Loading rigs…</div>}
 
         {!loading && error && (
-          <div className="text-sm text-red-400">
+          <div className="text-xs text-red-400">
             {error}. 
             <button 
               onClick={() => fetchRigs()}
-              className="ml-2 px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+              className="ml-1 px-1 py-0.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
             >
               Retry
             </button>
@@ -242,11 +234,15 @@ export default function NewSessionPage() {
         plcDocUrl: newEquipmentPLCProject || undefined
       };
       
-      const res = await fetchWithTimeout("/api/equipment/instances/create", {
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 10000);
+      const res = await fetch("/api/equipment/instances/create", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
-      }, 15000); // 15s timeout
+        signal: ctrl.signal,
+      });
+      clearTimeout(timeoutId);
       
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) {

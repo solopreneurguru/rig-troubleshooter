@@ -1,6 +1,5 @@
 'use client';
 import { useState } from 'react';
-import { fetchWithTimeout } from '@/lib/http';
 
 const ADMIN_TOKEN = 'Cooper'; // Owner-only token
 
@@ -22,117 +21,92 @@ export default function DebugPage() {
 
   const tests = {
     'Health Check': async () => {
-      const response = await fetchWithTimeout('/api/health', {}, 5000);
+      const response = await fetch('/api/health');
       return await response.json();
     },
     
     'Airtable Connection': async () => {
-      const response = await fetchWithTimeout('/api/diagnostics/airtable', {}, 8000);
+      const response = await fetch('/api/diagnostics/airtable');
       return await response.json();
     },
     
     'Server Latency': async () => {
-      const response = await fetchWithTimeout('/api/diagnostics/latency', {}, 5000);
+      const response = await fetch('/api/diagnostics/latency');
       return await response.json();
     },
     
     'Rigs List': async () => {
-      const response = await fetchWithTimeout('/api/rigs/list', {}, 10000);
+      const response = await fetch('/api/rigs/list');
       return await response.json();
     },
     
     'Create Equipment Test': async () => {
-      const response = await fetchWithTimeout('/api/equipment/instances/create', {
+      const response = await fetch('/api/equipment/instances/create', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ 
           name: `Debug Test ${Date.now()}`, 
           rigName: 'Demo Rig Alpha' 
         })
-      }, 12000);
+      });
       return await response.json();
     },
     
     'Create Session Test': async () => {
-      const response = await fetchWithTimeout('/api/sessions/create', {
+      const response = await fetch('/api/sessions/create', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ 
-          problem: `Debug test session ${Date.now()}` 
+          problem: `Debug test session ${Date.now()}`,
+          rigId: 'recDemoRigAlpha' // Use a known rig ID
         })
-      }, 15000);
+      });
       return await response.json();
-    },
-    
-    'Seed v2 Pack': async () => {
-      const response = await fetchWithTimeout('/api/dev/seed/v2-pack-plus', {
+    }
+  };
+
+  const handleSeedV2Pack = async () => {
+    setLoading('Seed v2 Pack');
+    try {
+      const response = await fetch('/api/dev/seed/v2-pack-plus', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${ADMIN_TOKEN}` }
-      }, 10000);
-      return await response.json();
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${ADMIN_TOKEN}`
+        }
+      });
+      const json = await response.json();
+      setResults((prev: any) => ({ ...prev, 'Seed v2 Pack': { success: response.ok, data: json } }));
+    } catch (error: any) {
+      setResults((prev: any) => ({ ...prev, 'Seed v2 Pack': { success: false, error: error.message } }));
+    } finally {
+      setLoading(null);
     }
   };
-
-  const runAllTests = async () => {
-    for (const [name, testFn] of Object.entries(tests)) {
-      await runTest(name, testFn);
-      // Small delay between tests
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-  };
-
-  const clearResults = () => setResults({});
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">Debug Panel</h1>
-        <p className="text-sm text-gray-600">
-          Owner-only diagnostics for production troubleshooting. Tests include timeouts and error handling.
-        </p>
-      </div>
-
-      <div className="mb-6 flex gap-2">
-        <button
-          onClick={runAllTests}
-          disabled={loading !== null}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loading === null ? 'Run All Tests' : `Running ${loading}...`}
-        </button>
-        <button
-          onClick={clearResults}
-          className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
-        >
-          Clear Results
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    <div className="p-6 space-y-4">
+      <h1 className="text-2xl font-bold">Debug Panel</h1>
+      
+      <div className="flex flex-wrap gap-2">
         {Object.entries(tests).map(([name, testFn]) => (
           <button
             key={name}
             onClick={() => runTest(name, testFn)}
             disabled={loading !== null}
-            className={`p-3 text-left rounded border ${
-              loading === name 
-                ? 'bg-yellow-100 border-yellow-300' 
-                : results[name]?.success 
-                  ? 'bg-green-100 border-green-300' 
-                  : results[name]?.success === false 
-                    ? 'bg-red-100 border-red-300' 
-                    : 'bg-gray-100 border-gray-300'
-            }`}
+            className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-60"
           >
-            <div className="font-medium">{name}</div>
-            <div className="text-sm text-gray-600">
-              {loading === name ? 'Running...' : 
-               results[name]?.success ? '✅ Success' : 
-               results[name]?.success === false ? '❌ Failed' : 
-               'Click to test'}
-            </div>
+            {loading === name ? 'Running...' : name}
           </button>
         ))}
+        
+        <button
+          onClick={handleSeedV2Pack}
+          disabled={loading !== null}
+          className="px-4 py-2 rounded bg-green-600 text-white disabled:opacity-60"
+        >
+          {loading === 'Seed v2 Pack' ? 'Seeding...' : 'Seed v2 Pack'}
+        </button>
       </div>
 
       {Object.keys(results).length > 0 && (

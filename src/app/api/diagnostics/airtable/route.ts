@@ -23,8 +23,7 @@ export async function GET() {
     const tb = table(process.env.TB_RIGS || "Rigs");
     const rows = await withTimeout(
       tb.select({ fields: ["Name"], pageSize: 1 }).all(),
-      5000, // 5s timeout
-      () => console.log("[diagnostics] Airtable connection timeout")
+      5000 // 5s timeout
     );
 
     const latency = Date.now() - startTime;

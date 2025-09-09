@@ -1,6 +1,5 @@
 'use client';
 import { useState } from 'react';
-import { fetchWithTimeout } from '@/lib/http';
 
 interface DebugPanelProps {
   adminToken?: string;
@@ -25,25 +24,25 @@ export default function DebugPanel({ adminToken }: DebugPanelProps) {
 
   const quickTests = {
     'Health': async () => {
-      const response = await fetchWithTimeout('/api/health', {}, 5000);
+      const response = await fetch('/api/health');
       return await response.json();
     },
     'Airtable': async () => {
-      const response = await fetchWithTimeout('/api/diagnostics/airtable', {}, 8000);
+      const response = await fetch('/api/diagnostics/airtable');
       return await response.json();
     },
     'Latency': async () => {
-      const response = await fetchWithTimeout('/api/diagnostics/latency', {}, 5000);
+      const response = await fetch('/api/diagnostics/latency');
       return await response.json();
     }
   };
 
   const seedTest = async () => {
     if (!adminToken) throw new Error('Admin token required');
-    const response = await fetchWithTimeout('/api/dev/seed/v2-pack-plus', {
+    const response = await fetch('/api/dev/seed/v2-pack-plus', {
       method: 'POST',
       headers: { Authorization: `Bearer ${adminToken}` }
-    }, 10000);
+    });
     return await response.json();
   };
 

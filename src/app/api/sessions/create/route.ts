@@ -1,48 +1,37 @@
+import { NextResponse } from 'next/server';
 import { createSession } from "@/lib/airtable";
-import { withTimeout, jsonOk, jsonErr } from "@/lib/http";
+import { withDeadline } from "@/lib/deadline";
 
 export async function POST(req: Request) {
+  const body = await req.json().catch(() => ({}));
+  const problem = (body?.problem ?? '').trim();
+  const rigId = body?.rigId || null;
+  const equipmentId = body?.equipmentId || null;
+
+  if (!problem || problem.length < 3) {
+    return NextResponse.json({ ok:false, error:'problem required' }, { status: 422 });
+  }
+
   try {
-    console.log("[create-flow] Starting session creation");
-    
-    const body = await withTimeout(req.json(), 5000);
-    const problem = (body?.problem ?? "").trim();
-    if (!problem) return jsonErr("problem is required", 422);
-    
-    const sessionId = await withTimeout(
-      createSession(
+    const work = (async () => {
+      const id = await createSession(
         "", // title - will be computed by Airtable
         problem,
-        body.rigId || undefined,
+        rigId,
         body.overrideRulePackKey || undefined,
-        body.equipmentId || undefined,
+        equipmentId,
         undefined // failureMode
-      ),
-      20000, // 20s deadline
-      () => console.error('[timeout]', '/api/sessions/create', { ms: 20000, hint: 'airtable' })
-    );
-    
-    if (!sessionId) return jsonErr('failed to create session', 502);
-    
-    console.log(`[create-flow] Successfully created session: ${sessionId}`);
-    return jsonOk({ id: sessionId, redirect: `/sessions/${encodeURIComponent(sessionId)}` }, { status: 201 });
-  } catch (e: any) {
-    if (e?.code === 'ETIMEDOUT') {
-      console.error('[timeout]', '/api/sessions/create', { ms: 20000, hint: 'airtable' });
-      return jsonErr('upstream timeout', 504);
-    }
-    
-    // Log Airtable error status if available
-    if (e?.status) {
-      console.log(`[create-flow] Airtable error status: ${e.status}`);
-    }
-    
-    console.log(`[create-flow] Session creation error: ${e?.message || 'server error'}`);
-    return jsonErr(e?.message || 'server error', 500);
+      );
+      return NextResponse.json({ ok:true, id, redirect:`/sessions/${encodeURIComponent(id)}` }, { status: 201 });
+    })();
+    return await withDeadline(work, 9000, 'sessions/create');
+  } catch (e:any) {
+    const msg = (e?.message || '').startsWith('deadline:') ? 'timeout' : (e?.message || 'failed');
+    return NextResponse.json({ ok:false, error: msg }, { status: 503 });
   }
 }
 
 // Keep method guarders if you want:
 export async function GET() {
-  return jsonErr("Method Not Allowed", 405);
+  return NextResponse.json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
 }

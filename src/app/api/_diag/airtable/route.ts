@@ -14,8 +14,7 @@ export async function GET() {
     const tb = table(process.env.TB_RIGS || "Rigs");
     await withTimeout(
       tb.select({ fields: ["Name"], pageSize: 1 }).all(),
-      8000, // 8s timeout
-      () => console.error('[timeout]', '/api/_diag/airtable', { ms: 8000, hint: 'airtable' })
+      8000 // 8s timeout
     );
 
     const ms = Date.now() - startTime;

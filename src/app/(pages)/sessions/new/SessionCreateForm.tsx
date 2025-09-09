@@ -25,44 +25,24 @@ export default function SessionCreateForm({
       return;
     }
     
-    // 25s timeout guard
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 25000);
-
     setSubmitting(true);
-    setStatus("Posting…");
+    setError(null);
+    setStatus('Posting…');
     try {
-      const res = await fetch("/api/sessions/create", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ 
-          problem,
-          rigId: rigId || undefined,
-          equipmentId: equipmentId || undefined
-        }),
-        signal: ctrl.signal,
+      const res = await fetch('/api/sessions/create', {
+        method:'POST',
+        headers:{'content-type':'application/json'},
+        body: JSON.stringify({ problem, rigId: rigId || null, equipmentId: equipmentId || null }),
+        signal: AbortSignal.timeout(9000)
       });
-      const json = await res.json().catch(() => ({}));
-      console.log("create-session", res.status, json);
-      
-      if (!res.ok || !json?.ok) {
-        const errorMsg = res.status === 504 ? "Create failed: upstream timeout" : (json?.error || `Create failed (${res.status})`);
-        setError(errorMsg);
-        setStatus("❌ Create failed: " + errorMsg);
-        setSubmitting(false);
-        clearTimeout(t);
-        return;
-      }
-      
-      setStatus(`Created ${json.id}`);
-      clearTimeout(t);
-      router.push(json.redirect || `/sessions/${json.id}`);
-    } catch (err:any) {
-      clearTimeout(t);
-      const msg = err?.name === "AbortError" ? "Request timed out (25s). Try again." : (err?.message || "Network error.");
+      const j = await res.json().catch(()=>null);
+      if (!res.ok || !j?.ok) throw new Error(j?.error || `HTTP ${res.status}`);
+      setStatus(`Created ${j.id}`);
+      window.location.href = j.redirect || `/sessions/${encodeURIComponent(j.id)}`;
+    } catch (e:any) {
+      const msg = e?.message?.includes('timeout') ? 'Request timed out (9s). Try again.' : (e?.message || 'Failed');
       setError(msg);
-      setStatus("❌ Create failed: " + msg);
-      setSubmitting(false);
+      setStatus(msg);
     } finally {
       setSubmitting(false);
     }
