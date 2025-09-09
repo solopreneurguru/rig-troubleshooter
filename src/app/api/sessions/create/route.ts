@@ -16,12 +16,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok:false, error:'problem (min 3 chars) required' }, { status: 422 });
     }
 
+    // Minimal, schema-aligned fields (no Title write: Title is a Formula)
     const fields: Record<string, any> = {
       Problem: problem,
-      Status: 'Open',
+      // If 'Open' is a valid Status option in Airtable, uncomment next line:
+      // Status: 'Open',
     };
-    if (equipmentId) fields.EquipmentInstance = [equipmentId];
     if (rigId) fields.Rig = [rigId];
+    if (equipmentId) fields.EquipmentInstance = [equipmentId];
 
     const id = await createSessionViaSdk(fields);
     return NextResponse.json({ ok:true, id, redirect:`/sessions/${id}` }, { status: 201 });
