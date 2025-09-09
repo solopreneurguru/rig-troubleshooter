@@ -1,74 +1,59 @@
-import { table, findByName } from "@/lib/airtable";
-import { withTimeout, jsonOk, jsonErr } from "@/lib/http";
+import { NextResponse } from 'next/server';
+import { withDeadline, logStart } from '@/lib/deadline';
+import { table } from '@/lib/airtable';
 
-const TB_RIGS = process.env.TB_RIGS!;
-const TB_EQUIPMENT_INSTANCES = process.env.TB_EQUIPMENT_INSTANCES!;
-const TB_EQUIPMENT_TYPES = process.env.TB_EQUIPMENT_TYPES!;
-const EQUIPINSTANCES_TYPE_FIELD = process.env.EQUIPINSTANCES_TYPE_FIELD || "Type"; // link-to-record field on EquipmentInstances
-const NAME_FIELD = "Name"; // standard name field
-const RIG_LINK_FIELD = "Rig"; // link-to-record field on EquipmentInstances to the Rigs table
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
+  const end = logStart('equip/create');
   try {
-    let body: any = {};
-    try { body = await req.json(); } catch {}
-    
-    const name = (body.name || "").trim();
-    const rigName = (body.rigName || "").trim();
-    const rigId = body.rigId;
-    const typeName = (body.typeName || "").trim();
-    const typeId = body.typeId;
-    const serial = (body.serial || "").trim();
-    const plcDocUrl = (body.plcDocUrl || "").trim();
+    const { name, rigName, typeName, serial, plcDocUrl } = await req.json().catch(() => ({}));
+    if (!name) return NextResponse.json({ ok:false, error:'name required' }, { status: 422 });
 
-    if (!name) return jsonErr("name is required", 422);
+    const rigsTb = table(process.env.TB_RIGS!);
+    const typesTb = table(process.env.TB_EQUIPMENT_TYPES!);
+    const instTb = table(process.env.TB_EQUIPMENT_INSTANCES!);
 
-    const equipTbl = table(TB_EQUIPMENT_INSTANCES);
-
-    let finalRigId: string | undefined;
-    if (rigId) {
-      finalRigId = rigId;
-    } else if (rigName) {
-      const rig = await withTimeout(
-        findByName(TB_RIGS, rigName, NAME_FIELD),
-        20000
-      );
-      if (!rig) return jsonErr(`Rig not found: ${rigName}`, 422);
-      finalRigId = rig.id;
-    }
-
-    let finalTypeId: string | undefined;
-    if (typeId) {
-      finalTypeId = typeId;
-    } else if (typeName) {
-      const typeRec = await withTimeout(
-        findByName(TB_EQUIPMENT_TYPES, typeName, NAME_FIELD),
-        20000
-      );
-      if (!typeRec) return jsonErr(`EquipmentType not found: ${typeName}`, 422);
-      finalTypeId = typeRec.id;
-    }
-
-    const fields: Record<string, any> = { [NAME_FIELD]: name };
-    if (finalRigId) fields[RIG_LINK_FIELD] = [finalRigId];
-    if (finalTypeId) fields[EQUIPINSTANCES_TYPE_FIELD] = [finalTypeId];
-    if (serial) fields.Serial = serial;
-    if (plcDocUrl) fields.PLCProjectDoc = plcDocUrl;
-
-    const created = await withTimeout(
-      equipTbl.create([{ fields }]),
-      20000
+    // look up rig by name (case-insensitive contains). Keep it cheap.
+    const rigPage = await withDeadline(
+      rigsTb.select({ fields:['Name'], filterByFormula: `FIND(LOWER("${(rigName||'').trim()}"), LOWER({Name}))` , pageSize: 5 }).firstPage(),
+      8000,
+      'equip/rigLookup'
     );
-    
-    const rec = created?.[0];
-    if (!rec?.id) throw new Error("create returned no id");
+    const rig = rigPage?.[0];
+    if (!rig) return NextResponse.json({ ok:false, error:'rig not found' }, { status: 404 });
 
-    return jsonOk({ id: rec.id, name }, { status: 201 });
-  } catch (e: any) {
-    if (e?.code === 'ETIMEDOUT') {
-      console.error('[timeout]', '/api/equipment/instances/create', { hint: 'airtable' });
-      return jsonErr('upstream timeout', 504);
+    // type is optional; if provided, try to link by name
+    let typeId: string | undefined;
+    if (typeName) {
+      const typePage = await withDeadline(
+        typesTb.select({ fields:['Name'], filterByFormula: `FIND(LOWER("${typeName.trim()}"), LOWER({Name}))`, pageSize:5 }).firstPage(),
+        8000,
+        'equip/typeLookup'
+      );
+      typeId = typePage?.[0]?.id;
     }
-    return jsonErr(e?.message || 'server error', 500);
+
+    const created = await withDeadline(
+      instTb.create([{
+        fields: {
+          Name: name,
+          Rig: [rig.id],
+          ...(typeId ? { Type: [typeId] } : {}),
+          ...(serial ? { Serial: serial } : {}),
+          ...(plcDocUrl ? { PLCProjectDoc: plcDocUrl } : {})
+        }
+      }]),
+      8000,
+      'equip/create'
+    );
+
+    end();
+    return NextResponse.json({ ok: true, id: created[0].id });
+  } catch (e: any) {
+    end();
+    console.error('[api] equip/create error', { error: e?.message || String(e) });
+    return NextResponse.json({ ok:false, error: e?.message || 'timeout' }, { status: 503 });
   }
 }

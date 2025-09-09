@@ -227,27 +227,22 @@ export default function NewSessionPage() {
     try {
       const body = { 
         name: newEquipmentName, 
-        rigId: selectedRigId || undefined,
         rigName: selectedRigName || undefined,
         typeName: selectedTypeName || undefined,
         serial: newEquipmentSerial || undefined,
         plcDocUrl: newEquipmentPLCProject || undefined
       };
       
-      const ctrl = new AbortController();
-      const timeoutId = setTimeout(() => ctrl.abort(), 10000);
       const res = await fetch("/api/equipment/instances/create", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
-        signal: ctrl.signal,
+        signal: AbortSignal.timeout(9000),
       });
-      clearTimeout(timeoutId);
       
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) {
-        const errorMsg = res.status === 504 ? "Equipment creation timed out" : (json?.error || `HTTP ${res.status}`);
-        throw new Error(errorMsg);
+        throw new Error(json?.error || `HTTP ${res.status}`);
       }
       
       // Success — reflect selection in parent state
@@ -260,9 +255,9 @@ export default function NewSessionPage() {
       setNewEquipmentType("");
       setNewEquipmentPLCProject("");
     } catch (e: any) {
-      const errorMsg = e.name === 'AbortError' 
-        ? "Equipment creation timed out" 
-        : (e?.message || "Network error");
+      const errorMsg = e?.message?.includes('timeout') 
+        ? "Request timed out (9s). Try again." 
+        : (e?.message || "Failed to create equipment");
       setEquipmentCreateError(errorMsg);
       setEquipmentCreating(false);
     }

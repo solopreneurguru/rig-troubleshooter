@@ -1,33 +1,30 @@
 import { NextResponse } from 'next/server';
-import { createSession } from "@/lib/airtable";
-import { withDeadline } from "@/lib/deadline";
+import { withDeadline, logStart } from '@/lib/deadline';
+import { createSession } from '@/lib/airtable'; // use existing
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
-  const problem = (body?.problem ?? '').trim();
-  const rigId = body?.rigId || null;
-  const equipmentId = body?.equipmentId || null;
-
-  if (!problem || problem.length < 3) {
-    return NextResponse.json({ ok:false, error:'problem required' }, { status: 422 });
-  }
-
+  const end = logStart('sessions/create');
   try {
-    const work = (async () => {
-      const id = await createSession(
-        "", // title - will be computed by Airtable
-        problem,
-        rigId,
-        body.overrideRulePackKey || undefined,
-        equipmentId,
-        undefined // failureMode
-      );
-      return NextResponse.json({ ok:true, id, redirect:`/sessions/${encodeURIComponent(id)}` }, { status: 201 });
-    })();
-    return await withDeadline(work, 9000, 'sessions/create');
-  } catch (e:any) {
-    const msg = (e?.message || '').startsWith('deadline:') ? 'timeout' : (e?.message || 'failed');
-    return NextResponse.json({ ok:false, error: msg }, { status: 503 });
+    const { problem, equipId, rigId } = await req.json().catch(() => ({}));
+    const text = (problem||'').trim();
+    if (text.length < 3) return NextResponse.json({ ok:false, error:'problem required' }, { status: 422 });
+
+    // Keep the minimum write set; other fields attach later
+    const id = await withDeadline(
+      createSession('', text, rigId, undefined, equipId, undefined),
+      9000,
+      'sessions/create'
+    );
+
+    end();
+    return NextResponse.json({ ok:true, id, redirect:`/sessions/${encodeURIComponent(id)}` }, { status: 201 });
+  } catch (e: any) {
+    end();
+    console.error('[api] sessions/create error', { error: e?.message || String(e) });
+    return NextResponse.json({ ok:false, error: e?.message || 'timeout' }, { status: 503 });
   }
 }
 

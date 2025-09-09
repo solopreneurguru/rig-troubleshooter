@@ -32,7 +32,7 @@ export default function SessionCreateForm({
       const res = await fetch('/api/sessions/create', {
         method:'POST',
         headers:{'content-type':'application/json'},
-        body: JSON.stringify({ problem, rigId: rigId || null, equipmentId: equipmentId || null }),
+        body: JSON.stringify({ problem: problem.trim(), equipId: equipmentId || undefined, rigId: rigId || undefined }),
         signal: AbortSignal.timeout(9000)
       });
       const j = await res.json().catch(()=>null);
