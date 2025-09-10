@@ -10,31 +10,30 @@ export async function POST(req: Request) {
   console.log("[api] ▶ sessions/create");
   try {
     const body = await req.json().catch(() => ({}));
-    const { problem, equipmentId, rigId } = body || {};
+    const problem = String(body?.problem ?? '').trim();
+    const equipmentId = body?.equipmentId ? String(body.equipmentId) : undefined;
+    const rigId = body?.rigId ? String(body.rigId) : undefined;
 
-    if (!problem || typeof problem !== 'string' || problem.trim().length < 3) {
-      return NextResponse.json({ ok: false, error: 'Problem must be 3+ chars' }, { status: 422 });
+    if (problem.length < 3) {
+      console.log("[api] ◀ sessions/create validation-fail", { ms: Date.now()-t0 });
+      return NextResponse.json({ ok:false, error:'problem (min 3 chars) required' }, { status: 422 });
     }
 
-    // Determine the Sessions→Equipment link field from env, fallback to 'Equipment'
-    const EQUIP_FIELD = process.env.SESSIONS_EQUIPMENT_FIELD?.trim() || 'Equipment';
-    if (!/^[A-Za-z0-9 _-]{1,64}$/.test(EQUIP_FIELD)) {
-      return NextResponse.json({ ok: false, error: `Invalid SESSIONS_EQUIPMENT_FIELD value` }, { status: 500 });
-    }
-
-    // Build Airtable fields (align with base schema)
+    // Minimal, schema-aligned fields (no Title write: Title is a Formula)
     const fields: Record<string, any> = {
-      Problem: problem.trim(),
-      // Status: 'Open', // uncomment if 'Open' is a valid SS option in your base
+      Problem: problem,
+      // If 'Open' is a valid Status option in Airtable, uncomment next line:
+      // Status: 'Open',
     };
-    if (equipmentId) (fields as any)[EQUIP_FIELD] = [equipmentId];
-    if (rigId) (fields as any).Rig = [rigId];
+    if (rigId) fields.Rig = [rigId];
+    if (equipmentId) fields.EquipmentInstance = [equipmentId];
 
-    const { id } = await createSessionViaSdk(fields);
-    const ms = Date.now() - t0;
-    return NextResponse.json({ ok: true, id, redirect: `/sessions/${id}`, ms });
-  } catch (err: any) {
-    const ms = Date.now() - t0;
-    return NextResponse.json({ ok: false, error: err?.message || 'error', ms }, { status: 500 });
+    const id = await createSessionViaSdk(fields);
+    console.log("[api] ◀ sessions/create ok", { ms: Date.now()-t0, id });
+    return NextResponse.json({ ok:true, id, redirect:`/sessions/${id}` }, { status: 201 });
+  } catch (e: any) {
+    console.log("[api] ◀ sessions/create fail", { ms: Date.now()-t0, msg: e?.message || String(e) });
+    console.error('[api] sessions/create', e?.message || e);
+    return NextResponse.json({ ok:false, error: e?.message || 'timeout' }, { status: 503 });
   }
 }

@@ -7,6 +7,7 @@ import { isV2Pack } from "@/lib/rulepacks";
 import V2StepCard from "./V2StepCard";
 import { normalizeCitations } from "@/lib/citations";
 import CitationsPanel from "@/components/CitationsPanel";
+import ChatPanel from "./ChatPanel";
 
 type Step = { 
   key: string; 
@@ -291,7 +292,12 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
 
   return (
     <div className="grid grid-cols-12 gap-4 p-6">
-      <div className="col-span-8 space-y-4">
+      {/* LEFT: Chat Panel */}
+      <div className="col-span-3">
+        <ChatPanel sessionId={sessionId} />
+      </div>
+      {/* CENTER: Main Content */}
+      <div className="col-span-6 space-y-4">
         <h1 className="text-2xl font-bold">Session {sessionId}</h1>
         
         {/* Inline v2 pack picker */}
@@ -546,7 +552,8 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
         </div>
       </div>
       
-      <aside className="col-span-4 space-y-4">
+      {/* RIGHT: Citations & Data */}
+      <aside className="col-span-3 space-y-4">
         {/* Citations Panel */}
         {(() => {
           const currentCitations = isV2 && v2Node 
