@@ -24,6 +24,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const sha = (process.env.VERCEL_GIT_COMMIT_SHA || "unknown").slice(0,7);
+  const marker = "FST-RIG-TS-FP";
+  
   return (
     <html lang="en">
       <body
@@ -32,6 +35,16 @@ export default function RootLayout({
         <DevBanner />
         <Header />
         {children}
+        <footer style={{
+          marginTop:"2rem",
+          padding:"0.75rem 1rem",
+          fontSize:"12px",
+          opacity:0.6,
+          borderTop:"1px solid rgba(255,255,255,0.1)"
+        }}>
+          <span>build: <code>{sha}</code></span>
+          <span style={{marginLeft:12}}>marker: <code>{marker}</code></span>
+        </footer>
       </body>
     </html>
   );
