@@ -16,8 +16,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'Problem must be 3+ chars' }, { status: 422 });
     }
 
-    // Determine the Sessions→Equipment link field from env, fallback to 'EquipmentInstance'
-    const EQUIP_FIELD = process.env.SESSIONS_EQUIPMENT_FIELD?.trim() || 'EquipmentInstance';
+    // Determine the Sessions→Equipment link field from env, fallback to 'Equipment'
+    const EQUIP_FIELD = process.env.SESSIONS_EQUIPMENT_FIELD?.trim() || 'Equipment';
     if (!/^[A-Za-z0-9 _-]{1,64}$/.test(EQUIP_FIELD)) {
       return NextResponse.json({ ok: false, error: `Invalid SESSIONS_EQUIPMENT_FIELD value` }, { status: 500 });
     }

@@ -29,7 +29,7 @@ TB_PARTS=tblcWhuGTy8UcjEsv
 
 # Field name envs (non-secret)
 SESSIONS_RULEPACK_FIELD=RulePack
-SESSIONS_EQUIPMENT_FIELD=EquipmentInstance  # Sessions→Equipment link field name (resilient to Airtable column renames)
+SESSIONS_EQUIPMENT_FIELD=Equipment  # Sessions→Equipment link field name (resilient to Airtable column renames)
 EQUIPINSTANCES_TYPE_FIELD=Type
 
 # Secrets (leave blank locally; set in Vercel)
