@@ -4,6 +4,18 @@
 ## Safety banner
 Safety First: Follow LOTO and OEM procedures. Do not energize/override interlocks unless authorized and safe.
 
+## First-Aid for API Timeouts (Next.js)
+
+If many API routes start timing out simultaneously, check for a **dynamic route conflict**:
+
+1. Run `npm run check:routes` — this fails if siblings like `/api/sessions/[id]` and `/api/sessions/[sessionId]` coexist.
+2. Standardize the param name (prefer `[id]`) and remove the conflicting sibling folder.
+3. Re-deploy and verify:
+   - `npm run smoke:routes` → expect 200s on `node-ping`, `edge-ping`, `health-lite`.
+   - Open `/api/diag/ping` in the browser to confirm fast JSON.
+
+This and Airtable-key misconfigurations are the two fastest ways to knock out the runtime. The guardrail script prevents the former.
+
 ## One-minute smoke (prod)
 1) `GET /api/health` → `ok:true`, Airtable reachable, `rulepacks.v2 >= 1`  
 2) `/sessions/new` → create a session (auto-select or **Override** v2 pack)  

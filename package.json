@@ -8,7 +8,9 @@
     "start": "next start",
     "docs:update": "node scripts/docs-update.mjs",
     "docs:check": "node scripts/docs-update.mjs --check",
-    "smoke:prod": "node scripts/smoke-prod.mjs"
+    "smoke:prod": "node scripts/smoke-prod.mjs",
+    "check:routes": "node scripts/route-conflicts.mjs",
+    "smoke:routes": "node scripts/smoke-routes.mjs"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.3.0",

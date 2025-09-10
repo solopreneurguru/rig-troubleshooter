@@ -49,3 +49,18 @@ Finish/Escalate → Finding with ReportURL; optional email automation
 
 ## Reliability
 `/api/health` is the single smoke source (Airtable reachability + robust v2 count)
+
+## API Route Naming Policy (Hard Guardrail)
+
+**Why:** Next.js treats sibling dynamic segments at the same path level as a conflict. Having both `/api/sessions/[id]` and `/api/sessions/[sessionId]` will break the Node runtime and cause timeouts.
+
+**Rules:**
+- Under any given folder, you may have at most **one** dynamic segment directory.
+- Standardize parameter names:
+  - Within `/api/<resource>/[id]` use `[id]` for the primary record.
+  - Use more specific names (e.g., `[sessionId]`) only if they live under a *different* top-level route (e.g., `/api/report/[sessionId]` is fine).
+- Never mix `[id]` and `[sessionId]` (or any two param names) as *siblings*.
+
+**Automation:**
+- `npm run check:routes` fails the build if sibling dynamic segments are detected.
+- Run this locally before PRs; CI will run it before deploys.
