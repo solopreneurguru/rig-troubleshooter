@@ -5,11 +5,11 @@ export const runtime = "nodejs";
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ sessionId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { sessionId } = await params;
-    const session = await getSessionById(sessionId);
+    const { id } = await params;
+    const session = await getSessionById(id);
     return NextResponse.json({ ok: true, session });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
