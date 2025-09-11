@@ -50,3 +50,34 @@ export interface FindingRec {
   Summary?: string;
   ReportURL?: string;
 }
+
+export type Citation = {
+  kind: "Electrical" | "Hydraulic" | "PLC" | "Manual" | "Photo";
+  documentId: string;     // Airtable Documents recordId
+  page?: number;          // 1-based page number
+  locator?: string;       // e.g., "Rung K201", "FB3", "Tag: ENABLE_OK"
+  snippet?: string;       // <= 200 chars (optional)
+  url?: string;           // optional direct URL to blob/page if available
+  title?: string;         // convenience title if resolver adds it
+};
+
+// Measure specification for numeric readings
+export type MeasureSpec = {
+  unit: "VDC" | "VAC" | "A" | "mA" | "Ohm" | "kOhm" | "psi" | "bar" | "Hz" | "rpm";
+  points?: string;             // e.g., "A16–B12"
+  expect: string;              // human spec e.g., "24 VDC ±10%" | "20–28 VDC" | ">=24 VDC"
+  passNext?: string;           // step id
+  failNext?: string;           // step id
+};
+
+// Enhanced step type for v2 with safety gating and measurements
+export type PlanStepV2 = {
+  id: string;
+  kind: "info" | "ask" | "measure" | "plc_read" | "photo" | "end";
+  instruction?: string;
+  requiresSafetyGate?: boolean;        // if true, gate the action
+  safetyChecklist?: string[];          // optional check items
+  citations?: Citation[];
+  measure?: MeasureSpec;               // for measure steps
+  // Additional step-specific fields...
+};

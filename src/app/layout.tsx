@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/Header";
 import DevBanner from "@/components/DevBanner";
+import VersionBadge from "@/components/VersionBadge";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,10 +41,16 @@ export default function RootLayout({
           padding:"0.75rem 1rem",
           fontSize:"12px",
           opacity:0.6,
-          borderTop:"1px solid rgba(255,255,255,0.1)"
+          borderTop:"1px solid rgba(255,255,255,0.1)",
+          display:"flex",
+          justifyContent:"space-between",
+          alignItems:"center"
         }}>
-          <span>build: <code>{sha}</code></span>
-          <span style={{marginLeft:12}}>marker: <code>{marker}</code></span>
+          <div>
+            <span>build: <code>{sha}</code></span>
+            <span style={{marginLeft:12}}>marker: <code>{marker}</code></span>
+          </div>
+          <VersionBadge />
         </footer>
       </body>
     </html>

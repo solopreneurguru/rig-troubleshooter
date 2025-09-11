@@ -1,63 +1,240 @@
 "use client";
-import { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
+
+type Rig = {
+  id: string;
+  name: string;
+  location?: string;
+  operator?: string;
+};
+
+const DOC_TYPES = [
+  "Electrical",
+  "Hydraulic", 
+  "Manual",
+  "PLC",
+  "Photo"
+];
 
 export default function UploadPage() {
-  const [status, setStatus] = useState<string>("");
-  const [url, setUrl] = useState<string>("");
-  const [docId, setDocId] = useState<string>("");
+  const [rigs, setRigs] = useState<Rig[]>([]);
+  const [selectedRig, setSelectedRig] = useState("");
+  const [title, setTitle] = useState("");
+  const [docType, setDocType] = useState("Manual");
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setStatus("Uploading...");
-    setUrl("");
-    setDocId("");
+  useEffect(() => {
+    loadRigs();
+  }, []);
 
-    const form = new FormData(e.currentTarget);
-    const file = form.get("file") as File | null;
-    if (!file) { setStatus("Please choose a file."); return; }
+  async function loadRigs() {
+    try {
+      const response = await fetch("/api/equipment/rigs");
+      const data = await response.json();
+      if (data.ok) {
+        setRigs(data.rigs);
+      } else {
+        setError("Failed to load rigs: " + data.error);
+      }
+    } catch (err) {
+      setError("Network error loading rigs");
+    }
+  }
+
+  async function handleUpload() {
+    if (!selectedRig || !title || !file) {
+      setError("Please fill in all required fields");
+      return;
+    }
+
+    setUploading(true);
+    setError(null);
+    setResult(null);
 
     try {
-      const res = await fetch("/api/blob/upload", { method: "POST", body: form });
-      const json = await res.json();
-      if (!json.ok) { setStatus(`Error: ${json.error || "upload failed"}`); return; }
-      setUrl(json.blob?.url || "");
-      setDocId(json.documentId || "");
-      setStatus(json.warning ? `Uploaded with warning: ${json.warning}` : "Upload complete.");
-    } catch {
-      setStatus("Upload failed.");
+      // Step 1: Upload file to Vercel Blob
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("rigEquipmentId", selectedRig);
+      formData.append("title", title);
+      formData.append("docType", docType);
+
+      const blobResponse = await fetch("/api/blob/upload", {
+        method: "POST",
+        body: formData
+      });
+
+      const blobResult = await blobResponse.json();
+      if (!blobResult.ok) {
+        throw new Error(blobResult.error || "Blob upload failed");
+      }
+
+      // Step 2: Create document record in Airtable
+      const docResponse = await fetch("/api/documents/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rigEquipmentId: selectedRig,
+          title,
+          docType,
+          url: blobResult.url,
+          size: blobResult.size,
+          contentType: blobResult.contentType
+        })
+      });
+
+      const docResult = await docResponse.json();
+      if (!docResult.ok) {
+        throw new Error(docResult.error || "Document creation failed");
+      }
+
+      // Success!
+      setResult({
+        blobUrl: blobResult.url,
+        documentId: docResult.documentId,
+        title: docResult.title,
+        docType: docResult.docType,
+        size: blobResult.size,
+        contentType: blobResult.contentType
+      });
+
+      // Reset form
+      setTitle("");
+      setFile(null);
+      setSelectedRig("");
+
+    } catch (err: any) {
+      setError(err.message || "Upload failed");
+    } finally {
+      setUploading(false);
     }
   }
 
   return (
-    <main className="p-6 max-w-xl space-y-4">
-      <h1 className="text-2xl font-bold">Upload a Document</h1>
-      <p className="text-sm opacity-80">PDF/JPG/PNG/WEBP · ≤20MB</p>
+    <div className="max-w-2xl mx-auto p-6">
+      <h1 className="text-2xl font-bold mb-6">Upload Document</h1>
+      
+      <div className="space-y-4">
+        {/* Rig Selection */}
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Rig Equipment *
+          </label>
+          <select
+            value={selectedRig}
+            onChange={(e) => setSelectedRig(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white"
+            disabled={uploading}
+          >
+            <option value="">Select a rig...</option>
+            {rigs.map((rig) => (
+              <option key={rig.id} value={rig.id}>
+                {rig.name} {rig.location ? `(${rig.location})` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <form onSubmit={onSubmit} className="space-y-3">
-        <input type="file" name="file" accept=".pdf,image/*" className="block w-full border rounded p-2" required />
-        <input type="text" name="title" placeholder="Title (e.g., Electrical Schematic P-34)" className="block w-full border rounded p-2" />
-        <select name="doctype" className="block w-full border rounded p-2">
-          <option value="">DocType (optional)</option>
-          <option>Electrical</option>
-          <option>Hydraulic</option>
-          <option>Manual</option>
-          <option>PLC</option>
-          <option>Photo</option>
-          <option>Other</option>
-        </select>
-        <input type="text" name="rigName" placeholder="Rig Name to link (optional, exact match)" className="block w-full border rounded p-2" />
-        <input type="text" name="filename" placeholder="Optional filename override" className="block w-full border rounded p-2" />
-        <textarea name="notes" placeholder="Notes (optional)" className="block w-full border rounded p-2" rows={3} />
-        <button type="submit" className="px-4 py-2 rounded bg-black text-white">Upload</button>
-      </form>
+        {/* Title */}
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Document Title *
+          </label>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            placeholder="Enter document title"
+            disabled={uploading}
+          />
+        </div>
 
-      {status && <p className="text-sm">{status}</p>}
-      {url && (
-        <p className="text-sm">
-          File URL: <a href={url} target="_blank" className="text-blue-600 underline">{url}</a>
-        </p>
-      )}
-      {docId && <p className="text-sm">Airtable Document ID: <code>{docId}</code></p>}
-    </main>
+        {/* Document Type */}
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Document Type
+          </label>
+          <select
+            value={docType}
+            onChange={(e) => setDocType(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white"
+            disabled={uploading}
+          >
+            {DOC_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* File Upload */}
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            File *
+          </label>
+          <input
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg"
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            disabled={uploading}
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Supported formats: PDF, PNG, JPG. Maximum size: 25MB.
+          </p>
+        </div>
+
+        {/* Upload Button */}
+        <button
+          onClick={handleUpload}
+          disabled={uploading || !selectedRig || !title || !file}
+          className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+        >
+          {uploading ? "Uploading..." : "Upload Document"}
+        </button>
+
+        {/* Error Display */}
+        {error && (
+          <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+            {error}
+          </div>
+        )}
+
+        {/* Success Display */}
+        {result && (
+          <div className="p-4 bg-green-100 border border-green-400 text-green-700 rounded">
+            <h3 className="font-medium mb-2">Upload Successful!</h3>
+            <div className="text-sm space-y-1">
+              <div><strong>Document ID:</strong> {result.documentId}</div>
+              <div><strong>Title:</strong> {result.title}</div>
+              <div><strong>Type:</strong> {result.docType}</div>
+              <div><strong>Size:</strong> {Math.round(result.size / 1024)} KB</div>
+              <div>
+                <strong>File:</strong>{" "}
+                <a 
+                  href={result.blobUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  Open Document ↗
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Info Note */}
+        <div className="p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded text-sm">
+          <strong>Note:</strong> Large files are stored in Blob storage; only metadata is saved in Airtable.
+          Documents will be linked to the selected rig equipment for easy access during troubleshooting sessions.
+        </div>
+      </div>
+    </div>
   );
 }

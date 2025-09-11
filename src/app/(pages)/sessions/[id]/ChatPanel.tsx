@@ -17,7 +17,7 @@ export default function ChatPanel({ sessionId }: { sessionId: string }) {
   async function load() {
     setErr(null);
     try {
-      const r = await fetch(`/api/chat/${sessionId}`, { cache: "no-store", signal: AbortSignal.timeout(9000) });
+      const r = await fetch(`/api/chat?sessionId=${sessionId}`, { cache: "no-store", signal: AbortSignal.timeout(9000) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j?.ok) throw new Error(j?.error || `HTTP ${r.status}`);
       setMessages(j.messages || []);
@@ -31,7 +31,7 @@ export default function ChatPanel({ sessionId }: { sessionId: string }) {
     setBusy(true);
     setErr(null);
     try {
-      const r = await fetch(`/api/chat/post`, {
+      const r = await fetch(`/api/chat`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ sessionId, role: "user", text }),
@@ -58,6 +58,9 @@ export default function ChatPanel({ sessionId }: { sessionId: string }) {
     <div className="h-full flex flex-col border border-neutral-800 rounded-lg overflow-hidden">
       <div className="px-3 py-2 bg-neutral-900 border-b border-neutral-800 text-sm font-medium">
         Session Chat
+      </div>
+      <div className="px-3 py-2 bg-yellow-900/20 border-b border-yellow-700/30 text-xs text-yellow-200">
+        ⚠️ <strong>Safety:</strong> Never energize equipment or open panels without proper authorization, LOTO procedures, and PPE. Always confirm hazards in the step runner.
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {messages.length === 0 && <div className="text-xs opacity-70">No messages yet. Start the conversation.</div>}

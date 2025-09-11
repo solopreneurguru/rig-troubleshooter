@@ -1,4 +1,5 @@
 import Airtable from "airtable";
+import { withDeadline } from "./withDeadline";
 
 const API_KEY = process.env.AIRTABLE_API_KEY!;
 const BASE_ID = process.env.AIRTABLE_BASE_ID!;
@@ -83,7 +84,7 @@ export async function ensureChatForSession(sessionId: string) {
     createFields["Session"] = [sessionId];
   } catch (_) {}
 
-  const created = await chats.create(createFields);
+  const created = await withDeadline(chats.create(createFields), 6000, 'chat-create');
   return created.id;
 }
 
@@ -108,7 +109,7 @@ export async function appendMessage(params: {
     fields["Session"] = [params.sessionId];
   } catch (_) {}
 
-  const created = await messages.create(fields);
+  const created = await withDeadline(messages.create(fields), 6000, 'message-create');
   return { chatId, messageId: created.id };
 }
 

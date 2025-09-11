@@ -8,6 +8,7 @@ import V2StepCard from "./V2StepCard";
 import { normalizeCitations } from "@/lib/citations";
 import CitationsPanel from "@/components/CitationsPanel";
 import ChatPanel from "./ChatPanel";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 type Step = { 
   key: string; 
@@ -292,13 +293,28 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
 
   return (
     <div className="grid grid-cols-12 gap-4 p-6">
+      {/* TOP: Session Header with Report Link */}
+      <div className="col-span-12 flex justify-between items-center mb-4">
+        <h1 className="text-xl font-semibold">Session: {sessionId}</h1>
+        <a
+          href={`/api/report/${sessionId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
+          title="Generate and open PDF report in new tab"
+        >
+          📄 Open Report (PDF)
+        </a>
+      </div>
+      
       {/* LEFT: Chat Panel */}
       <div className="col-span-3">
-        <ChatPanel sessionId={sessionId} />
+        <ErrorBoundary>
+          <ChatPanel sessionId={sessionId} />
+        </ErrorBoundary>
       </div>
       {/* CENTER: Main Content */}
       <div className="col-span-6 space-y-4">
-        <h1 className="text-2xl font-bold">Session {sessionId}</h1>
         
         {/* Inline v2 pack picker */}
         {!rulePackKey && (
@@ -383,12 +399,14 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
         
         {/* V2 Session Render */}
         {isV2 && v2Node ? (
-          <V2StepCard 
-            sessionId={sessionId}
-            nodeKey={v2NodeKey}
-            node={v2Node}
-            onSubmitted={handleV2Submitted}
-          />
+          <ErrorBoundary>
+            <V2StepCard 
+              sessionId={sessionId}
+              nodeKey={v2NodeKey}
+              node={v2Node}
+              onSubmitted={handleV2Submitted}
+            />
+          </ErrorBoundary>
         ) : !isV2 && step ? (
         <div className="rounded-xl border p-4 space-y-2">
           <div className="text-sm opacity-70">Step key: {step.key} • Order {order}</div>

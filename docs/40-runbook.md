@@ -45,5 +45,28 @@ This and Airtable-key misconfigurations are the two fastest ways to knock out th
 - **/sessions/undefined**: fixed; redirects to `/sessions/new`.  
 - **No SafetyGate**: ensure step has `requireConfirm:true` and Tech context is present.
 
+## Chat Reuse Key System
+
+**Overview**: Each Session gets exactly one Chat thread via a denormalized `SessionId` field.
+
+**Data Model**:
+- `Chats.SessionId` (text) - mirrors the linked Session recordId for fast lookup
+- `Chats.Session` (link) - standard Airtable link to Sessions table
+- `Messages.Session` (link) - direct link to Sessions for queries
+- `Messages.Chat` (link) - link to parent Chat
+
+**API Endpoints**:
+- `GET /api/chat?sessionId=<recXXX>` → `{ ok, chatId, messages[] }`
+- `POST /api/chat` with `{ sessionId, text }` → `{ ok, chatId, messageId }`
+- `POST /api/admin/backfill-chat-sessionid` (token-guarded) - one-time data migration
+- `GET /api/diag/version` → `{ ok, commit, region, tablesPresent[] }`
+
+**Reuse Logic**: 
+1. Fast path: SELECT by `{SessionId} = "recXXX"` 
+2. Fallback: Scan `{Session}` links and backfill `SessionId`
+3. Create: New Chat with both `Session` link and `SessionId` text
+
+**Safety**: Persistent warning banner in Chat UI about LOTO/PPE requirements.
+
 ## Reporting & email
 Finding creation stores **ReportURL** on the Finding and Airtable automation can send "New Finding" emails.

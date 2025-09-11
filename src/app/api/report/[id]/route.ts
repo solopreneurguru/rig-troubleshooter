@@ -13,6 +13,8 @@ const styles = StyleSheet.create({
   h2: { fontSize: 12, marginTop: 10, marginBottom: 4 },
   row: { marginBottom: 4 },
   mono: { fontFamily: "Times-Roman" },
+  citation: { fontSize: 8, marginTop: 2, marginLeft: 10, color: "#666666" },
+  citationTitle: { fontSize: 8, fontWeight: "bold", color: "#444444" }
 });
 
 function ReportDoc({ data }: any) {
@@ -28,26 +30,67 @@ function ReportDoc({ data }: any) {
       React.createElement(Text, { style: styles.h2 }, "Steps & Readings"),
       ...(actions?.map((a: any, i: number) => {
         const citations = normalizeCitations(a.Citations ?? a.Citation);
-        return React.createElement(View, { key: a.id, wrap: false, style: { marginBottom: 6 } },
+        return React.createElement(View, { key: a.id, wrap: false, style: { marginBottom: 8 } },
           React.createElement(Text, null, `#${a.Order ?? i+1}  ${a.StepKey} — ${a.Instruction}`),
           a.Expected ? React.createElement(Text, null, `Expected: ${a.Expected}`) : null,
-          a.Citation ? React.createElement(Text, null, `Citation: ${a.Citation}`) : null,
-          a.Citations ? React.createElement(Text, null, `Citations: ${JSON.stringify(a.Citations)}`) : null,
-          citations.length > 0 ? React.createElement(Text, null, `Citations: ${citations.map(c => c.type === "doc" ? `Doc${c.page ? ` p.${c.page}` : ""}` : c.type === "plc" ? `PLC ${c.tag}` : `TP ${c.label}`).join(", ")}`) : null,
+          
+          // Enhanced citations display
+          citations.length > 0 ? React.createElement(View, { style: { marginTop: 4 } },
+            React.createElement(Text, { style: styles.citationTitle }, "Why:"),
+            ...citations.map((c: any, j: number) => {
+              const displayText = c.type === "doc" 
+                ? `${c.title || "Document"}${c.page ? ` (p.${c.page})` : ""}`
+                : c.type === "plc" 
+                ? `PLC Tag: ${c.tag}`
+                : `Test Point: ${c.label}`;
+              
+              return React.createElement(Text, { key: j, style: styles.citation }, 
+                `• ${displayText}${c.snippet ? ` - "${c.snippet.slice(0, 160)}${c.snippet.length > 160 ? '...' : ''}"` : ''}`
+              );
+            })
+          ) : null,
+          
           a.PlcResult ? React.createElement(Text, null, `PLC Result: ${a.PlcResult}`) : null,
           a.PhotoUrl ? React.createElement(Text, null, `Photo: ${a.PhotoUrl}`) : null,
-          ...(a.readings?.map((r: any, j: number) =>
-            React.createElement(Text, { key: j, style: styles.mono }, `Reading: ${r.Value || ""} ${r.Unit || ""}  Result: ${r.PassFail || ""}`)
-          ) || [])
+          
+          // Safety confirmation info
+          a.SafetyConfirmedBy ? React.createElement(View, { style: { marginTop: 2 } },
+            React.createElement(Text, { style: styles.citation }, 
+              `Safety: confirmed by ${a.SafetyConfirmedBy} at ${a.SafetyConfirmedAt ? new Date(a.SafetyConfirmedAt).toLocaleDateString() : 'unknown'}${a.SafetyChecklist ? ` — [${a.SafetyChecklist}]` : ''}`
+            )
+          ) : null,
+          
+          // Reading info (latest reading for this step)
+          ...(a.readings?.filter((r: any) => r.StepId === a.StepKey).slice(-1).map((r: any) => 
+            React.createElement(Text, { style: styles.citation }, 
+              `Reading: ${r.Value} ${r.Unit} → ${r.Pass ? 'PASS' : 'FAIL'} (Spec: ${r.Spec}${r.Points ? `; Points: ${r.Points}` : ''})`
+            )
+          ) || []),
+          
+          // History summary (last 5 readings)
+          (() => {
+            const stepReadings = a.readings?.filter((r: any) => r.StepId === a.StepKey) || [];
+            if (stepReadings.length <= 1) return null;
+            
+            const last5 = stepReadings.slice(-5);
+            const passCount = last5.filter((r: any) => r.Pass).length;
+            const passRate = Math.round((passCount / last5.length) * 100);
+            const values = last5.map((r: any) => `${r.Value}`).join(', ');
+            const unit = last5[0]?.Unit || '';
+            
+            return React.createElement(Text, { style: styles.citation }, 
+              `History (last ${last5.length}): ${values} ${unit} — pass rate: ${passRate}%`
+            );
+          })()
         );
       }) || [])
     )
   );
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ sessionId: string }> }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { sessionId } = await params;
+    const { id: sessionId } = await params;
     const data = await getSessionBundle(sessionId);
     const pdfDoc = React.createElement(ReportDoc, { data });
     const buffer = await renderToBuffer(pdfDoc);

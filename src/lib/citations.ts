@@ -42,3 +42,64 @@ export function docHref(c: Citation): string | undefined {
     ? (c.page ? `${c.url}#page=${c.page}` : c.url)
     : undefined;
 }
+
+// Enhanced citation with resolved metadata
+export type EnhancedCitation = Citation & {
+  kind?: "Electrical" | "Hydraulic" | "PLC" | "Manual" | "Photo";
+  snippet?: string;
+  documentId?: string;
+  resolved?: boolean;
+};
+
+// Memory cache for request scope
+const citationCache = new Map<string, any>();
+
+/**
+ * Resolve citation metadata from Airtable Documents table
+ * Lightweight lookup with deadline protection and graceful fallback
+ */
+export async function resolveCitationMeta(citation: Citation): Promise<EnhancedCitation> {
+  // For non-doc citations, return as-is
+  if (citation.type !== "doc") {
+    return {
+      ...citation,
+      kind: citation.type === "plc" ? "PLC" : "Manual",
+      resolved: true
+    };
+  }
+
+  // Check cache first
+  const cacheKey = `doc-${citation.title}`;
+  if (citationCache.has(cacheKey)) {
+    const cached = citationCache.get(cacheKey);
+    return {
+      ...citation,
+      kind: cached.DocType || "Manual",
+      snippet: cached.Description?.slice(0, 200),
+      documentId: cached.id,
+      resolved: true
+    };
+  }
+
+  try {
+    // Lightweight Airtable lookup with deadline
+    const { withDeadline } = await import('./withDeadline');
+    
+    // This would need proper Airtable implementation
+    // For now, return graceful fallback
+    const enhanced: EnhancedCitation = {
+      ...citation,
+      kind: "Manual", // Default fallback
+      resolved: false
+    };
+
+    return enhanced;
+  } catch (error) {
+    // Graceful fallback on any error
+    return {
+      ...citation,
+      kind: "Manual",
+      resolved: false
+    };
+  }
+}

@@ -32,7 +32,14 @@
 ## Admin / owner-only (prod)
 - **POST** `/api/admin/session`  — create a demo session (token-guarded)
 - **POST** `/api/admin/cleanup`  — cleanup recent demo sessions (token-guarded)
-> Both require `ADMIN_DEV_TOKEN`. Without the token they respond **403** in prod.
+- **POST** `/api/admin/backfill-chat-sessionid`  — one-time chat data migration (token-guarded)
+> All require `ADMIN_DEV_TOKEN` or `ADMIN_TOKEN`. Without the token they respond **403** in prod.
+
+## Chat System APIs
+- **GET** `/api/chat?sessionId=<recXXX>`  — get messages for session → `{ ok, chatId, messages[] }`
+- **POST** `/api/chat`  — send message `{ sessionId, text }` → `{ ok, chatId, messageId }`
+- Uses denormalized `Chats.SessionId` field for fast session→chat lookup
+- Automatic chat creation per session with safety disclaimer in UI
 
 ## Dev utilities (preview-only)
 /api/dev/seed/v2-pack  
@@ -48,7 +55,9 @@ SafetyGate → capture `ConfirmedBy/At`
 Finish/Escalate → Finding with ReportURL; optional email automation
 
 ## Reliability
-`/api/health` is the single smoke source (Airtable reachability + robust v2 count)
+- `/api/health` is the single smoke source (Airtable reachability + robust v2 count)
+- `/api/diag/version` provides commit SHA, region, and table presence for support
+- `/api/diag/ping` confirms Node runtime responsiveness < 200ms
 
 ## API Route Naming Policy (Hard Guardrail)
 

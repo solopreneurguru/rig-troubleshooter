@@ -1,105 +1,144 @@
 import { NextResponse } from "next/server";
-import { getRulePackKeyForSession, appendAction } from "@/lib/airtable";
-import { loadV2PackByKey, evaluateMeasure, evaluatePlcRead } from "@/lib/plan_v2";
+import { withDeadline } from "@/lib/withDeadline";
+import { normalizeUnit, parseSpec, evaluate, formatSpec } from "@/lib/measure";
+import { getSessionById, getRulePackKeyForSession } from "@/lib/airtable";
+import { loadV2PackByKey } from "@/lib/plan_v2";
+import Airtable from "airtable";
 
-// Optional: if you have addReading helper, import it; else leave commented.
-// import { addReading } from "@/lib/airtable";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const preferredRegion = "iad1";
+
+function getBase() {
+  const API_KEY = process.env.AIRTABLE_API_KEY;
+  const BASE_ID = process.env.AIRTABLE_BASE_ID;
+  if (!API_KEY || !BASE_ID) throw new Error("Airtable env missing");
+  
+  Airtable.configure({ apiKey: API_KEY });
+  return new Airtable().base(BASE_ID);
+}
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { sessionId, stepId, kind, value, plcResult, photoUrl, citationsAck, safetyGate } = body || {};
-    if (!sessionId || !stepId || !kind) {
-      return NextResponse.json({ ok:false, error:"missing params" }, { status:400 });
+    const body = await req.json().catch(() => ({}));
+    const { sessionId, stepId, reading } = body;
+
+    if (!sessionId || !stepId) {
+      return NextResponse.json({ 
+        ok: false, 
+        error: "Missing required fields: sessionId, stepId" 
+      }, { status: 400 });
     }
 
-    const packKey = await getRulePackKeyForSession(sessionId);
+    // Get session and rulepack to validate step
+    const session = await withDeadline(getSessionById(sessionId), 6000, 'get-session');
+    if (!session) {
+      return NextResponse.json({ ok: false, error: "Session not found" }, { status: 404 });
+    }
+
+    const packKey = await withDeadline(getRulePackKeyForSession(sessionId), 6000, 'get-pack-key');
     if (!packKey || !packKey.endsWith(".v2")) {
-      return NextResponse.json({ ok:false, error:"not a v2 session" }, { status:400 });
-    }
-    const pack = await loadV2PackByKey(packKey);
-    const step = pack?.steps?.[stepId];
-    if (!step) return NextResponse.json({ ok:false, error:"step not found" }, { status:404 });
-
-    let actionOk: boolean | undefined = undefined;
-    let actionValue: any = value;
-
-    // Handle new step kinds (V2Step)
-    if ('kind' in step) {
-      if (step.kind === "plc_read") {
-        if (plcResult === undefined || plcResult === null) {
-          return NextResponse.json({ ok:false, error:"plc_read requires plcResult" }, { status:400 });
-        }
-        actionValue = plcResult;
-        actionOk = evaluatePlcRead(step, plcResult);
-      }
-
-      if (step.kind === "photo") {
-        if (!photoUrl) {
-          return NextResponse.json({ ok:false, error:"photo requires photoUrl" }, { status:400 });
-        }
-        actionValue = photoUrl;
-        // Optionally persist to Readings/Documents based on step.storeTo
-        // try { await addReading(sessionId, stepId, photoUrl, 'photo', true); } catch {}
-      }
-
-      if (step.kind === "measure") {
-        const numeric = Number(value);
-        if (Number.isNaN(numeric)) {
-          return NextResponse.json({ ok:false, error:"measure requires numeric value" }, { status:400 });
-        }
-        actionOk = evaluateMeasure(step as any, numeric);
-      }
-
-      if (step.kind === "ask") {
-        actionValue = value; // boolean
-      }
-
-      if (step.kind === "info") {
-        actionValue = value; // any value
-      }
+      return NextResponse.json({ ok: false, error: "Not a v2 session" }, { status: 400 });
     }
 
-    // Handle legacy step types (LegacyV2Step)
-    if ('type' in step) {
-      if (step.type === "safetyGate") {
-        const confirmed = !!(value?.confirmed || value === true || safetyGate);
-        if (!confirmed && (step as any).requireConfirm !== false) {
-          return NextResponse.json({ ok:false, error:"safety not confirmed" }, { status:400 });
-        }
-        actionValue = { confirmed: confirmed === true };
-      }
-
-      if (step.type === "measure") {
-        const numeric = Number(value);
-        if (Number.isNaN(numeric)) {
-          return NextResponse.json({ ok:false, error:"measure requires numeric value" }, { status:400 });
-        }
-        actionOk = evaluateMeasure(step as any, numeric);
-        // Optionally persist to Readings if you have a helper; otherwise only Actions.
-        // try { await addReading(sessionId, stepId, numeric, (step as any).unit, actionOk); } catch {}
-      }
-
-      if (step.type === "ask") {
-        actionValue = value; // boolean
-      }
-
-      if (step.type === "info") {
-        actionValue = value; // any value
-      }
+    const pack = await withDeadline(loadV2PackByKey(packKey), 6000, 'load-pack');
+    if (!pack) {
+      return NextResponse.json({ ok: false, error: "Rule pack not found" }, { status: 404 });
     }
 
-    await appendAction(sessionId, { 
-      stepId, 
-      kind, 
-      value: actionValue, 
-      ok: actionOk,
-      citations: citationsAck,
-      plcResult,
-      photoUrl
+    const step = pack.steps[stepId];
+    if (!step) {
+      return NextResponse.json({ ok: false, error: "Step not found" }, { status: 404 });
+    }
+
+    // Handle measure steps
+    if ((step as any).kind === "measure" && reading) {
+      const { value, unit: rawUnit, note } = reading;
+      
+      if (typeof value !== "number") {
+        return NextResponse.json({ 
+          ok: false, 
+          error: "Reading value must be a number" 
+        }, { status: 400 });
+      }
+
+      const measure = (step as any).measure;
+      if (!measure) {
+        return NextResponse.json({ 
+          ok: false, 
+          error: "Step missing measure specification" 
+        }, { status: 400 });
+      }
+
+      // Normalize unit and parse spec
+      const unit = normalizeUnit(rawUnit || measure.unit);
+      const spec = parseSpec(measure.expect, unit);
+      const pass = evaluate(value, spec);
+
+      // Record reading in Airtable
+      const TB_READINGS = process.env.TB_READINGS;
+      if (TB_READINGS) {
+        const base = getBase();
+        const readings = base(TB_READINGS);
+
+        const readingFields: any = {
+          Session: [sessionId],
+          StepId: stepId,
+          Value: value,
+          Unit: unit,
+          Pass: pass,
+          Spec: measure.expect,
+          Points: measure.points || "",
+          Note: note || "",
+          CreatedAt: new Date().toISOString()
+        };
+
+        // Add spec bounds if parsed
+        if (spec.min !== undefined) readingFields.SpecMin = spec.min;
+        if (spec.max !== undefined) readingFields.SpecMax = spec.max;
+        if (spec.exact !== undefined) readingFields.SpecExact = spec.exact;
+
+        await withDeadline(
+          readings.create(readingFields),
+          6000,
+          'create-reading'
+        );
+      }
+
+      // Determine next step
+      const nextStepId = pass ? measure.passNext : measure.failNext;
+
+      return NextResponse.json({ 
+        ok: true, 
+        pass, 
+        nextStepId,
+        reading: {
+          value,
+          unit,
+          spec: formatSpec(spec, unit),
+          pass
+        }
+      });
+    }
+
+    // Handle other step types (non-measure)
+    // For now, just return success without specific next step logic
+    return NextResponse.json({ 
+      ok: true, 
+      nextStepId: null // Let client handle navigation
     });
-    return NextResponse.json({ ok:true });
-  } catch (err:any) {
-    return NextResponse.json({ ok:false, error:String(err?.message||err) }, { status:500 });
+
+  } catch (e: any) {
+    if (e?.message?.includes('deadline')) {
+      return NextResponse.json({ 
+        ok: false, 
+        error: 'deadline', 
+        label: e.message 
+      }, { status: 503 });
+    }
+    return NextResponse.json({ 
+      ok: false, 
+      error: e?.message || "submit failed" 
+    }, { status: 500 });
   }
 }

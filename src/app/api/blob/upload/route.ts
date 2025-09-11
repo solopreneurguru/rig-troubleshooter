@@ -1,80 +1,94 @@
 import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
-import { createDocument, findRigByName } from "@/lib/airtable";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const preferredRegion = "iad1";
 
-const ok = (body: any, status = 200) => NextResponse.json(body, { status });
+// File size limit: 25MB
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
+
+// Allowed MIME types
+const ALLOWED_TYPES = [
+  "application/pdf",
+  "image/png", 
+  "image/jpeg",
+  "image/jpg"
+];
 
 export async function POST(req: Request) {
   try {
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      return ok({ ok: false, error: "BLOB_READ_WRITE_TOKEN missing" }, 500);
+    const formData = await req.formData();
+    const file = formData.get("file") as File;
+    const rigEquipmentId = formData.get("rigEquipmentId") as string;
+    const title = formData.get("title") as string;
+    const docType = formData.get("docType") as string;
+
+    if (!file) {
+      return NextResponse.json({ 
+        ok: false, 
+        error: "No file provided" 
+      }, { status: 400 });
     }
 
-    const form = await req.formData();
-    const file = form.get("file");
-    if (!file || !(file instanceof File)) {
-      return ok({ ok: false, error: "file field missing" }, 400);
+    if (!rigEquipmentId || !title) {
+      return NextResponse.json({ 
+        ok: false, 
+        error: "Missing required fields: rigEquipmentId, title" 
+      }, { status: 400 });
     }
 
-    // Metadata inputs from the form
-    const title = form.get("title")?.toString() || (file as any).name || `Upload ${Date.now()}`;
-    const docType = form.get("doctype")?.toString();     // Electrical/Hydraulic/Manual/PLC/Photo/Other
-    const rigName = form.get("rigName")?.toString();     // optional: try to link to Rigs
-    const notes = form.get("notes")?.toString();
-
-    const allowed = ["application/pdf","image/jpeg","image/png","image/webp"];
-    const type = (file as any).type || "application/octet-stream";
-    if (!allowed.includes(type)) return ok({ ok: false, error: `Unsupported type: ${type}` }, 415);
-
-    const MAX = 20 * 1024 * 1024; // 20MB MVP
-    const size = (file as any).size as number | undefined;
-    if (typeof size === "number" && size > MAX) {
-      return ok({ ok: false, error: "File too large (20MB limit in MVP)." }, 413);
+    // Validate file type
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return NextResponse.json({ 
+        ok: false, 
+        error: `Invalid file type. Allowed: PDF, PNG, JPG. Got: ${file.type}` 
+      }, { status: 400 });
     }
 
-    const rawName = (file as any).name || `upload-${Date.now()}`;
-    const finalName = form.get("filename")?.toString() || rawName;
-    const key = `uploads/${Date.now()}-${finalName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ 
+        ok: false, 
+        error: `File too large. Maximum size: 25MB. Got: ${Math.round(file.size / 1024 / 1024)}MB` 
+      }, { status: 400 });
+    }
 
-    const uploaded = await put(key, file, {
-      access: "public",
-      token: process.env.BLOB_READ_WRITE_TOKEN,
-      contentType: type,
+    // Check for Vercel Blob token
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+    if (!blobToken) {
+      return NextResponse.json({ 
+        ok: false, 
+        error: "Blob storage not configured" 
+      }, { status: 500 });
+    }
+
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const extension = file.name.split('.').pop() || 'bin';
+    const filename = `docs/${rigEquipmentId}/${timestamp}-${title.replace(/[^a-zA-Z0-9]/g, '_')}.${extension}`;
+
+    // Upload to Vercel Blob
+    const blob = await put(filename, file, {
+      access: 'public',
+      token: blobToken,
+      contentType: file.type
     });
 
-    // Try to link to a rig if rigName provided
-    let rigId: string | undefined = undefined;
-    if (rigName) {
-      try {
-        const rig = await findRigByName(rigName);
-        if (rig?.id) rigId = rig.id;
-      } catch {}
-    }
+    return NextResponse.json({
+      ok: true,
+      url: blob.url,
+      pathname: blob.pathname,
+      size: file.size,
+      contentType: file.type,
+      filename: filename
+    });
 
-    // Create Airtable Document row if TB_DOCS is configured
-    let documentId: string | undefined;
-    if (process.env.TB_DOCS) {
-      try {
-        const doc = await createDocument({
-          Title: title,
-          DocType: docType,
-          BlobURL: uploaded.url,
-          MimeType: type,
-          SizeBytes: typeof size === "number" ? size : undefined,
-          Notes: notes,
-          RigId: rigId,
-        });
-        documentId = doc.id;
-      } catch (e: any) {
-        // Don't fail the upload if Airtable write fails; return a warning
-        return ok({ ok: true, blob: uploaded, warning: `Upload ok, but Airtable doc create failed: ${String(e?.message || e)}` });
-      }
-    }
-
-    return ok({ ok: true, blob: uploaded, documentId, linkedRigId: rigId });
-  } catch (err: any) {
-    return ok({ ok: false, error: String(err?.message || err) }, 500);
+  } catch (e: any) {
+    console.error("Blob upload error:", e);
+    return NextResponse.json({ 
+      ok: false, 
+      error: e?.message || "Upload failed" 
+    }, { status: 500 });
   }
 }
