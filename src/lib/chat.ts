@@ -121,8 +121,8 @@ export async function listMessagesForSession(sessionId: string) {
   const messages = base(TB_MESSAGES);
   try {
     const sel = messages.select({
-      // Airtable doesn't let us filter by linked id natively; use ARRAYJOIN fallback
-      filterByFormula: `FIND("${chatId}", ARRAYJOIN({Chat}))`,
+      // Filter by Session link using FIND/ARRAYJOIN for robustness
+      filterByFormula: `FIND("${sessionId}", ARRAYJOIN({Session}))`,
       sort: [{ field: "CreatedAt", direction: "asc" }],
       pageSize: 50,
     });
@@ -143,8 +143,8 @@ export async function listMessagesForSession(sessionId: string) {
     const rows2 = await firstPageWithDeadline(sel2, 7000);
     const items = rows2
       .filter((r: any) => {
-        const links = (r.get("Chat") as any[]) || [];
-        return links.some((lk) => lk && (lk.id === chatId || lk === chatId));
+        const links = (r.get("Session") as any[]) || [];
+        return links.some((lk) => lk && (lk.id === sessionId || lk === sessionId));
       })
       .map((r: any) => ({
         id: r.id,

@@ -1,9 +1,10 @@
 "use client";
 import React, { useState, useEffect } from "react";
 
-type Rig = {
+type RigEquipment = {
   id: string;
   name: string;
+  equipmentType: string;
 };
 
 const DOC_TYPES = [
@@ -15,7 +16,7 @@ const DOC_TYPES = [
 ];
 
 export default function UploadPage() {
-  const [rigs, setRigs] = useState<Rig[]>([]);
+  const [equipment, setEquipment] = useState<RigEquipment[]>([]);
   const [selectedRig, setSelectedRig] = useState("");
   const [title, setTitle] = useState("");
   const [docType, setDocType] = useState("Manual");
@@ -25,21 +26,21 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadRigs();
+    loadEquipment();
   }, []);
 
-  async function loadRigs() {
+  async function loadEquipment() {
     try {
-      const response = await fetch("/api/equipment/rigs");
+      const response = await fetch("/api/equipment/instances");
       const data = await response.json();
       if (data.ok) {
-        setRigs(data.rigs);
+        setEquipment(data.items);
       } else {
-        console.error("Rigs load error:", data.error);
-        setError("Failed to load rigs");
+        console.error("Equipment load error:", data.error);
+        setError("Failed to load equipment");
       }
     } catch (err) {
-      setError("Network error loading rigs");
+      setError("Network error loading equipment");
     }
   }
 
@@ -120,7 +121,7 @@ export default function UploadPage() {
         {/* Rig Selection */}
         <div>
           <label className="block text-sm font-medium mb-2">
-            Rig Equipment *
+            Equipment *
           </label>
           <select
             value={selectedRig}
@@ -128,10 +129,10 @@ export default function UploadPage() {
             className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white"
             disabled={uploading}
           >
-            <option value="">Select a rig...</option>
-            {rigs.map((rig) => (
-              <option key={rig.id} value={rig.id}>
-                {rig.name}
+            <option value="">Select equipment...</option>
+            {equipment.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
               </option>
             ))}
           </select>
