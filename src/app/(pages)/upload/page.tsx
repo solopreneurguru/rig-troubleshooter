@@ -4,8 +4,6 @@ import React, { useState, useEffect } from "react";
 type Rig = {
   id: string;
   name: string;
-  location?: string;
-  operator?: string;
 };
 
 const DOC_TYPES = [
@@ -37,7 +35,8 @@ export default function UploadPage() {
       if (data.ok) {
         setRigs(data.rigs);
       } else {
-        setError("Failed to load rigs: " + data.error);
+        console.error("Rigs load error:", data.error);
+        setError("Failed to load rigs");
       }
     } catch (err) {
       setError("Network error loading rigs");
@@ -132,7 +131,7 @@ export default function UploadPage() {
             <option value="">Select a rig...</option>
             {rigs.map((rig) => (
               <option key={rig.id} value={rig.id}>
-                {rig.name} {rig.location ? `(${rig.location})` : ''}
+                {rig.name}
               </option>
             ))}
           </select>

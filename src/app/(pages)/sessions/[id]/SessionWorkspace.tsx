@@ -296,15 +296,25 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
       {/* TOP: Session Header with Report Link */}
       <div className="col-span-12 flex justify-between items-center mb-4">
         <h1 className="text-xl font-semibold">Session: {sessionId}</h1>
-        <a
-          href={`/api/report/${sessionId}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
-          title="Generate and open PDF report in new tab"
-        >
-          📄 Open Report (PDF)
-        </a>
+        {sessionId ? (
+          <a
+            href={`/api/report/${sessionId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
+            title="Generate and open PDF report in new tab"
+          >
+            📄 Open Report (PDF)
+          </a>
+        ) : (
+          <button
+            disabled
+            className="inline-flex items-center gap-2 px-3 py-1 bg-gray-600 text-gray-400 text-sm rounded cursor-not-allowed"
+            title="Session not ready"
+          >
+            📄 Open Report (PDF)
+          </button>
+        )}
       </div>
       
       {/* LEFT: Chat Panel */}

@@ -28,10 +28,10 @@ export async function GET() {
     const base = getBase();
     const rigs = base(TB_RIGS);
 
-    // Get all rigs with basic info
+    // Get all rigs with basic info (Location is optional)
     const rigRecords = await withDeadline(
       rigs.select({
-        fields: ["Name", "Location", "Operator"],
+        fields: ["Name"],
         sort: [{ field: "Name", direction: "asc" }]
       }).firstPage(),
       8000,
@@ -40,9 +40,7 @@ export async function GET() {
 
     const rigList = rigRecords.map((record) => ({
       id: record.id,
-      name: record.get("Name") as string || "Unnamed Rig",
-      location: record.get("Location") as string,
-      operator: record.get("Operator") as string
+      name: record.get("Name") as string || "Unnamed Rig"
     }));
 
     return NextResponse.json({

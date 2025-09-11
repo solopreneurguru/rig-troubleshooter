@@ -14,6 +14,11 @@ export default function ChatPanel({ sessionId }: { sessionId: string }) {
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
+  // Debug logging and sessionId validation
+  React.useEffect(() => {
+    console.debug("ChatPanel sessionId", sessionId);
+  }, [sessionId]);
+
   async function load() {
     setErr(null);
     try {
@@ -75,6 +80,7 @@ export default function ChatPanel({ sessionId }: { sessionId: string }) {
       </div>
       <div className="p-2 border-t border-neutral-800">
         {err && <div className="text-red-400 text-xs mb-1">❌ {err}</div>}
+        {!sessionId && <div className="text-red-400 text-xs mb-1">❌ No session id</div>}
         <div className="flex gap-2">
           <textarea
             className="flex-1 rounded bg-neutral-900 p-2 text-sm"
@@ -85,7 +91,7 @@ export default function ChatPanel({ sessionId }: { sessionId: string }) {
           />
           <button
             type="button"
-            disabled={busy || !text.trim()}
+            disabled={busy || !text.trim() || !sessionId}
             onClick={send}
             className="self-end px-3 py-2 rounded bg-emerald-700 text-sm disabled:opacity-60"
           >
