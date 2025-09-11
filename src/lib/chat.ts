@@ -1,5 +1,6 @@
 import Airtable from "airtable";
 import { withDeadline } from "./withDeadline";
+import { setIfExists } from "./airtable-metadata";
 
 const API_KEY = process.env.AIRTABLE_API_KEY!;
 const BASE_ID = process.env.AIRTABLE_BASE_ID!;
@@ -14,6 +15,10 @@ function getBase() {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function esc(s: string): string {
+  return s.replace(/'/g, "\\'");
 }
 
 /**
@@ -38,7 +43,7 @@ export async function ensureChatForSession(sessionId: string) {
   // 1) Fast path: exact match on denormalized text field {SessionId}
   try {
     const sel1 = chats.select({
-      filterByFormula: `{SessionId} = "${sessionId}"`,
+      filterByFormula: `{SessionId} = '${esc(sessionId)}'`,
       pageSize: 1,
     });
     const rows1 = await firstPageWithDeadline(sel1, 6000);
@@ -99,59 +104,92 @@ export async function appendMessage(params: {
 
   const chatId = await ensureChatForSession(params.sessionId);
 
-  const fields: Record<string, any> = {
+  // Build fields with required and optional fields
+  const draft: Record<string, any> = {
     Role: params.role,
     Text: params.text,
     CreatedAt: nowIso(),
     Chat: [chatId],
+    Session: [params.sessionId],
+    // Add denormalized keys (will be filtered if not present)
+    SessionId: params.sessionId,
+    ChatId: chatId
   };
-  try {
-    fields["Session"] = [params.sessionId];
-  } catch (_) {}
 
+  // Filter to only existing fields
+  const fields = await setIfExists(base, TB_MESSAGES, draft);
+  
   const created = await withDeadline(messages.create(fields), 6000, 'message-create');
   return { chatId, messageId: created.id };
 }
 
 export async function listMessagesForSession(sessionId: string) {
+  if (!sessionId) throw new Error("sessionId required");
+  
   const base = getBase();
+  const messages = base(TB_MESSAGES);
   const chatId = await ensureChatForSession(sessionId);
 
-  // Try filter-by Chat link; fall back to scan if needed
-  const messages = base(TB_MESSAGES);
   try {
+    // First try: direct SessionId match
     const sel = messages.select({
-      // Filter by Session link using FIND/ARRAYJOIN for robustness
-      filterByFormula: `FIND("${sessionId}", ARRAYJOIN({Session}))`,
+      filterByFormula: `{SessionId}='${esc(sessionId)}'`,
       sort: [{ field: "CreatedAt", direction: "asc" }],
-      pageSize: 50,
+      pageSize: 100
     });
     const rows = await firstPageWithDeadline(sel, 7000);
-    return { chatId, items: rows.map((r: any) => ({
+    if (rows.length > 0) {
+      return {
+        chatId,
+        items: rows.map((r: any) => ({
+          id: r.id,
+          role: (r.get("Role") as string) || "user",
+          text: (r.get("Text") as string) || "",
+          createdAt: (r.get("CreatedAt") as string) || null,
+        }))
+      };
+    }
+  } catch (_) {
+    // Fall through to next attempt
+  }
+
+  try {
+    // Second try: ChatId match
+    const sel2 = messages.select({
+      filterByFormula: `{ChatId}='${esc(chatId)}'`,
+      sort: [{ field: "CreatedAt", direction: "asc" }],
+      pageSize: 100
+    });
+    const rows2 = await firstPageWithDeadline(sel2, 7000);
+    if (rows2.length > 0) {
+      return {
+        chatId,
+        items: rows2.map((r: any) => ({
+          id: r.id,
+          role: (r.get("Role") as string) || "user",
+          text: (r.get("Text") as string) || "",
+          createdAt: (r.get("CreatedAt") as string) || null,
+        }))
+      };
+    }
+  } catch (_) {
+    // Fall through to final attempt
+  }
+
+  // Last resort: link-based lookup
+  const sel3 = messages.select({
+    filterByFormula: `OR(FIND('${esc(sessionId)}',ARRAYJOIN({Session})), FIND('${esc(chatId)}',ARRAYJOIN({Chat})))`,
+    sort: [{ field: "CreatedAt", direction: "asc" }],
+    pageSize: 100
+  });
+  const rows3 = await firstPageWithDeadline(sel3, 7000);
+  return {
+    chatId,
+    items: rows3.map((r: any) => ({
       id: r.id,
       role: (r.get("Role") as string) || "user",
       text: (r.get("Text") as string) || "",
       createdAt: (r.get("CreatedAt") as string) || null,
-    })) };
-  } catch (_) {
-    // brute-force fallback: fetch small page and filter in app
-    const sel2 = messages.select({
-      fields: ["Chat", "Role", "Text", "CreatedAt"],
-      sort: [{ field: "CreatedAt", direction: "asc" }],
-      pageSize: 50,
-    });
-    const rows2 = await firstPageWithDeadline(sel2, 7000);
-    const items = rows2
-      .filter((r: any) => {
-        const links = (r.get("Session") as any[]) || [];
-        return links.some((lk) => lk && (lk.id === sessionId || lk === sessionId));
-      })
-      .map((r: any) => ({
-        id: r.id,
-        role: (r.get("Role") as string) || "user",
-        text: (r.get("Text") as string) || "",
-        createdAt: (r.get("CreatedAt") as string) || null,
-      }));
-    return { chatId, items };
-  }
+    }))
+  };
 }

@@ -15,6 +15,51 @@ function getBase() {
   return new Airtable().base(BASE_ID);
 }
 
+// Common field names to try in order of preference
+const NAME_FIELDS = [
+  "Name",
+  "Title",
+  "Equipment Name",
+  "Equip Name",
+  "Label",
+  "Equipment",
+  "Description"
+];
+
+function firstStringField(fields: Record<string, unknown>): string | undefined {
+  for (const [key, value] of Object.entries(fields)) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function findBestName(record: any): string {
+  try {
+    const fields = record.fields || {};
+    
+    // Try preferred field names first
+    for (const field of NAME_FIELDS) {
+      const value = fields[field];
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    // Fall back to first string field
+    const firstString = firstStringField(fields);
+    if (firstString) {
+      return firstString;
+    }
+
+    // Last resort: use record ID
+    return record.id || "Unnamed Equipment";
+  } catch (e) {
+    return record.id || "Unnamed Equipment";
+  }
+}
+
 export async function GET() {
   try {
     const TB_RIG_EQUIP = process.env.TB_RIG_EQUIP;
@@ -28,28 +73,19 @@ export async function GET() {
     const base = getBase();
     const rigEquip = base(TB_RIG_EQUIP);
 
-    // Get all rig equipment with basic info
+    // Get all records without field filtering
     const records = await withDeadline(
       rigEquip.select({
-        fields: ["Name", "EquipmentType", "Rig"],
-        sort: [{ field: "Name", direction: "asc" }]
+        sort: [{ field: "Name", direction: "asc" }] // Keep sorting by Name if it exists
       }).firstPage(),
       8000,
       'list-rig-equipment'
     );
 
-    const items = records.map((record) => {
-      const name = record.get("Name") as string || "Unnamed Equipment";
-      const equipType = record.get("EquipmentType") as string || "";
-      const rig = (record.get("Rig") as any[])?.[0]?.name || "";
-      const label = rig ? `${rig} — ${name}` : name;
-      
-      return {
-        id: record.id,
-        name: label,
-        equipmentType: equipType
-      };
-    });
+    const items = records.map((record) => ({
+      id: record.id,
+      name: findBestName(record)
+    }));
 
     return NextResponse.json({
       ok: true,
