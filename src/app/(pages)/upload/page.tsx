@@ -88,7 +88,9 @@ export default function UploadPage() {
 
       const docResult = await docResponse.json();
       if (!docResult.ok) {
-        throw new Error(docResult.error || "Document creation failed");
+        const msg = docResult.error || "Document creation failed";
+        console.error("Document create error:", msg);
+        throw new Error(msg);
       }
 
       // Success!
