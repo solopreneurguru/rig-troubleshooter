@@ -24,9 +24,13 @@ const LINK_FIELDS = ["RigEquipment", "Equipment", "EquipmentInstance", "Equipmen
 const ATTACHMENT_FIELDS = ["Attachments", "Files"];
 const DATE_FIELDS = ["CreatedAt", "Created", "Date", "Timestamp"];
 
-function isValidEquipmentId(id: string): boolean {
-  return typeof id === 'string' && id.startsWith('rec') && id.length > 3;
-}
+// Ensure we have a plain object with no Set/Map/etc.
+const toPojo = (o: any): Record<string, any> =>
+  o && typeof o === "object" && !Array.isArray(o) ? { ...o } : {};
+
+// Validate equipment record ID
+const validRecId = (v: any): boolean =>
+  typeof v === "string" && v.startsWith("rec") && v.length > 3;
 
 export async function POST(req: Request) {
   try {
@@ -48,10 +52,11 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    if (!isValidEquipmentId(rigEquipmentId)) {
+    if (!validRecId(rigEquipmentId)) {
       return NextResponse.json({
         ok: false,
-        error: "invalid equipment id"
+        error: "invalid equipment id format",
+        debug: { id: rigEquipmentId }
       }, { status: 400 });
     }
 
@@ -72,7 +77,8 @@ export async function POST(req: Request) {
     if (!linkKey) {
       return NextResponse.json({
         ok: false,
-        error: "Documents table has no equipment link field"
+        error: "Documents table has no equipment link field",
+        debug: { candidates: LINK_FIELDS, available: Array.from(allow) }
       }, { status: 400 });
     }
     draft[linkKey] = [rigEquipmentId];
@@ -110,10 +116,34 @@ export async function POST(req: Request) {
       draft[dateKey] = new Date().toISOString();
     }
 
-    // Filter to only existing fields and create record with explicit array API
-    const fields = await setIfExists(base, TB_DOCS, draft);
+    // Filter to only existing fields and ensure plain object
+    const fields = toPojo(await setIfExists(base, TB_DOCS, draft));
+
+    // Validate fields object shape
+    const isPojo = fields && typeof fields === "object" && !Array.isArray(fields);
+    const keys = isPojo ? Object.keys(fields) : [];
+    if (!isPojo || keys.length === 0) {
+      return NextResponse.json({
+        ok: false,
+        error: "invalid fields object",
+        debug: { isPojo, keys }
+      }, { status: 400 });
+    }
+
+    // Validate equipment link value
+    const linkVal = fields[linkKey];
+    const linkOk = Array.isArray(linkVal) && linkVal.length === 1 && validRecId(linkVal[0]);
+    if (!linkOk) {
+      return NextResponse.json({
+        ok: false,
+        error: "invalid equipment id for link field",
+        debug: { linkKey, linkVal }
+      }, { status: 400 });
+    }
+
+    // Create with explicit array API and typecast
     const created = await withDeadline(
-      docs.create([{ fields }]),
+      docs.create([{ fields }], { typecast: true }),
       8000,
       'docs-create'
     );
@@ -133,7 +163,8 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ 
       ok: false, 
-      error: e?.message || "document create failed" 
+      error: e?.message || "document create failed",
+      hint: "check /api/diag/docs-schema for field info"
     }, { status: 500 });
   }
 }
