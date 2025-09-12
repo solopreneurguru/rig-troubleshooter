@@ -24,6 +24,10 @@ const LINK_FIELDS = ["RigEquipment", "Equipment", "EquipmentInstance", "Equipmen
 const ATTACHMENT_FIELDS = ["Attachments", "Files"];
 const DATE_FIELDS = ["CreatedAt", "Created", "Date", "Timestamp"];
 
+function isValidEquipmentId(id: string): boolean {
+  return typeof id === 'string' && id.startsWith('rec') && id.length > 3;
+}
+
 export async function POST(req: Request) {
   try {
     const TB_DOCS = process.env.TB_DOCS;
@@ -41,6 +45,13 @@ export async function POST(req: Request) {
       return NextResponse.json({
         ok: false,
         error: "rigEquipmentId required"
+      }, { status: 400 });
+    }
+
+    if (!isValidEquipmentId(rigEquipmentId)) {
+      return NextResponse.json({
+        ok: false,
+        error: "invalid equipment id"
       }, { status: 400 });
     }
 
@@ -88,9 +99,7 @@ export async function POST(req: Request) {
       if (attachKey && url) {
         draft[attachKey] = [{
           url,
-          filename: title || "document",
-          size,
-          type: contentType
+          filename: title || "document"
         }];
       }
     }
@@ -101,17 +110,17 @@ export async function POST(req: Request) {
       draft[dateKey] = new Date().toISOString();
     }
 
-    // Filter to only existing fields and create record
+    // Filter to only existing fields and create record with explicit array API
     const fields = await setIfExists(base, TB_DOCS, draft);
-    const record = await withDeadline(
-      docs.create(fields),
+    const created = await withDeadline(
+      docs.create([{ fields }]),
       8000,
-      'create-document'
+      'docs-create'
     );
 
     return NextResponse.json({
       ok: true,
-      id: record.id
+      id: created[0].id
     });
 
   } catch (e: any) {
