@@ -7,14 +7,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const preferredRegion = "iad1";
 
-function getBase() {
-  const API_KEY = process.env.AIRTABLE_API_KEY;
-  const BASE_ID = process.env.AIRTABLE_BASE_ID;
-  if (!API_KEY || !BASE_ID) throw new Error("Airtable env missing");
-  
-  Airtable.configure({ apiKey: API_KEY });
-  return new Airtable().base(BASE_ID);
-}
+const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY!;
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID!;
+const TB_DOCS = process.env.TB_DOCS!;
 
 // Common field name patterns
 const NAME_FIELDS = ["Title", "Name", "Document Title", "Doc Title"];
@@ -24,17 +19,35 @@ const LINK_FIELDS = ["RigEquipment", "Equipment", "EquipmentInstance", "Equipmen
 const ATTACHMENT_FIELDS = ["Attachments", "Files"];
 const DATE_FIELDS = ["CreatedAt", "Created", "Date", "Timestamp"];
 
-// Ensure we have a plain object with no Set/Map/etc.
-const toPojo = (o: any): Record<string, any> =>
-  o && typeof o === "object" && !Array.isArray(o) ? { ...o } : {};
+function getBase() {
+  if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) throw new Error("Airtable env missing");
+  Airtable.configure({ apiKey: AIRTABLE_API_KEY });
+  return new Airtable().base(AIRTABLE_BASE_ID);
+}
 
 // Validate equipment record ID
 const validRecId = (v: any): boolean =>
   typeof v === "string" && v.startsWith("rec") && v.length > 3;
 
+async function airtableRestCreate(tableName: string, fields: Record<string, any>) {
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(tableName)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ fields, typecast: true }),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json?.error?.message || "airtable create failed");
+  }
+  return json; // { id, fields, createdTime }
+}
+
 export async function POST(req: Request) {
   try {
-    const TB_DOCS = process.env.TB_DOCS;
     if (!TB_DOCS) {
       return NextResponse.json({ 
         ok: false, 
@@ -61,7 +74,6 @@ export async function POST(req: Request) {
     }
 
     const base = getBase();
-    const docs = base(TB_DOCS);
 
     // Get available fields
     const allow = await getTableFields(base, TB_DOCS);
@@ -117,7 +129,7 @@ export async function POST(req: Request) {
     }
 
     // Filter to only existing fields and ensure plain object
-    const fields = toPojo(await setIfExists(base, TB_DOCS, draft));
+    const fields = { ...await setIfExists(base, TB_DOCS, draft) };
 
     // Validate fields object shape
     const isPojo = fields && typeof fields === "object" && !Array.isArray(fields);
@@ -141,16 +153,16 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // Create with explicit array API and typecast
+    // Create using REST API
     const created = await withDeadline(
-      docs.create([{ fields }], { typecast: true }),
+      airtableRestCreate(TB_DOCS, fields),
       8000,
       'docs-create'
     );
 
     return NextResponse.json({
       ok: true,
-      id: created[0].id
+      id: created.id
     });
 
   } catch (e: any) {
