@@ -16,8 +16,8 @@ const DOC_TYPES = [
 
 export default function UploadPage() {
   const [equipment, setEquipment] = useState<RigEquipment[]>([]);
-  const [selectedRig, setSelectedRig] = useState("");
-  const [manualEquipId, setManualEquipId] = useState("");
+  const [selectedEquipmentId, setSelectedEquipmentId] = useState("");
+  const [manualId, setManualId] = useState("");
   const [title, setTitle] = useState("");
   const [docType, setDocType] = useState("Manual");
   const [file, setFile] = useState<File | null>(null);
@@ -50,9 +50,12 @@ export default function UploadPage() {
       return;
     }
 
-    const resolvedEquipmentId = (manualEquipId?.trim() || selectedRig || "").trim();
-    if (!resolvedEquipmentId.startsWith("rec")) {
-      setError("Please select equipment or paste a valid record id (starts with 'rec').");
+    // resolve equipment id (manual overrides dropdown)
+    const resolvedEquipmentId = manualId?.trim() ? manualId.trim() : selectedEquipmentId;
+
+    // simple client-side guard
+    if (!resolvedEquipmentId || !resolvedEquipmentId.startsWith("rec")) {
+      setError("Please select equipment or paste a valid rec… id.");
       return;
     }
 
@@ -83,7 +86,7 @@ export default function UploadPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          equipmentId: resolvedEquipmentId,
+          rigEquipmentId: resolvedEquipmentId,
           title,
           docType,
           url: blobResult.url,
@@ -102,7 +105,7 @@ export default function UploadPage() {
       // Success!
       setResult({
         blobUrl: blobResult.url,
-        documentId: docResult.documentId,
+        documentId: docResult.id,
         title: docResult.title,
         docType: docResult.docType,
         size: blobResult.size,
@@ -112,8 +115,8 @@ export default function UploadPage() {
       // Reset form
       setTitle("");
       setFile(null);
-      setSelectedRig("");
-      setManualEquipId("");
+      setSelectedEquipmentId("");
+      setManualId("");
 
     } catch (err: any) {
       setError(err.message || "Upload failed");
@@ -133,8 +136,8 @@ export default function UploadPage() {
             Equipment *
           </label>
           <select
-            value={selectedRig}
-            onChange={(e) => setSelectedRig(e.target.value)}
+            value={selectedEquipmentId}
+            onChange={(e) => setSelectedEquipmentId(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white"
             disabled={uploading}
           >
@@ -151,8 +154,8 @@ export default function UploadPage() {
               Or paste Equipment Record ID (starts with <code>rec</code>)
             </label>
             <input
-              value={manualEquipId}
-              onChange={(e) => setManualEquipId(e.target.value)}
+              value={manualId}
+              onChange={(e) => setManualId(e.target.value)}
               placeholder="recXXXXXXXXXXXXXX"
               className="mt-1 w-full rounded border border-gray-600 bg-black/20 px-3 py-2 text-sm"
             />
@@ -213,7 +216,7 @@ export default function UploadPage() {
         {/* Upload Button */}
         <button
           onClick={handleUpload}
-          disabled={uploading || (!selectedRig && !manualEquipId) || !title || !file}
+          disabled={uploading || (!selectedEquipmentId && !manualId) || !title || !file}
           className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
         >
           {uploading ? "Uploading..." : "Upload Document"}

@@ -29,23 +29,6 @@ function getBase() {
 const validRecId = (v: any): boolean =>
   typeof v === "string" && v.startsWith("rec") && v.length > 3;
 
-async function airtableRestCreate(tableName: string, fields: Record<string, any>) {
-  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(tableName)}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${AIRTABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ fields, typecast: true }),
-  });
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(json?.error?.message || "airtable create failed");
-  }
-  return json; // { id, fields, createdTime }
-}
-
 export async function POST(req: Request) {
   try {
     if (!TB_DOCS) {
@@ -55,23 +38,25 @@ export async function POST(req: Request) {
       }, { status: 500 });
     }
 
-    const body = await req.json();
-    const { rigEquipmentId, title, docType, url, size, contentType } = body;
+    const body = await req.json().catch(() => ({} as any));
 
-    if (!rigEquipmentId) {
-      return NextResponse.json({
-        ok: false,
-        error: "rigEquipmentId required"
-      }, { status: 400 });
+    const rawId: string | null =
+      (body?.rigEquipmentId as string) ||
+      (body?.equipmentId as string) ||
+      (body?.equipId as string) ||
+      (body?.rigEquipId as string) ||
+      (body?.rig_equipment_id as string) ||
+      null;
+
+    if (!validRecId(rawId)) {
+      return NextResponse.json(
+        { ok: false, error: "rigEquipmentId missing/invalid" },
+        { status: 400 }
+      );
     }
 
-    if (!validRecId(rigEquipmentId)) {
-      return NextResponse.json({
-        ok: false,
-        error: "invalid equipment id format",
-        debug: { id: rigEquipmentId }
-      }, { status: 400 });
-    }
+    const rigEquipmentId = rawId!.trim();
+    const { title, docType, url, size, contentType } = body;
 
     const base = getBase();
 
@@ -89,9 +74,9 @@ export async function POST(req: Request) {
     if (!linkKey) {
       return NextResponse.json({
         ok: false,
-        error: "Documents table has no equipment link field",
-        debug: { candidates: LINK_FIELDS, available: Array.from(allow) }
-      }, { status: 400 });
+        error: "No link field present in Documents table",
+        debug: { linkCandidates: LINK_FIELDS }
+      }, { status: 500 });
     }
     draft[linkKey] = [rigEquipmentId];
 
@@ -128,41 +113,17 @@ export async function POST(req: Request) {
       draft[dateKey] = new Date().toISOString();
     }
 
-    // Filter to only existing fields and ensure plain object
-    const fields = { ...await setIfExists(base, TB_DOCS, draft) };
-
-    // Validate fields object shape
-    const isPojo = fields && typeof fields === "object" && !Array.isArray(fields);
-    const keys = isPojo ? Object.keys(fields) : [];
-    if (!isPojo || keys.length === 0) {
-      return NextResponse.json({
-        ok: false,
-        error: "invalid fields object",
-        debug: { isPojo, keys }
-      }, { status: 400 });
-    }
-
-    // Validate equipment link value
-    const linkVal = fields[linkKey];
-    const linkOk = Array.isArray(linkVal) && linkVal.length === 1 && validRecId(linkVal[0]);
-    if (!linkOk) {
-      return NextResponse.json({
-        ok: false,
-        error: "invalid equipment id for link field",
-        debug: { linkKey, linkVal }
-      }, { status: 400 });
-    }
-
-    // Create using REST API
+    // Filter to only existing fields and create record
+    const fields = await setIfExists(base, TB_DOCS, draft);
     const created = await withDeadline(
-      airtableRestCreate(TB_DOCS, fields),
+      base(TB_DOCS).create([{ fields }]) as any,
       8000,
       'docs-create'
     );
 
     return NextResponse.json({
       ok: true,
-      id: created.id
+      id: created[0].id
     });
 
   } catch (e: any) {
