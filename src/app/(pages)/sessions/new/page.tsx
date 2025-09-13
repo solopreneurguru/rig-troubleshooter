@@ -508,19 +508,32 @@ export default function NewSessionPage() {
 
                       // Now create the session linked to equipId
                       const DEFAULT_PROBLEM = "New troubleshooting session";
+                      const payload = {
+                        equipmentId: equipId,
+                        problem: DEFAULT_PROBLEM,
+                      };
+
                       const sResp = await fetch("/api/sessions/create", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          equipmentId: equipId,
-                          problem: DEFAULT_PROBLEM,
-                        }),
+                        body: JSON.stringify(payload),
                       });
-                      const sData = await sResp.json();
-                      if (!sResp.ok || !sData?.id) throw new Error(sData?.error || "Failed to create session");
 
-                      // Navigate to the session
-                      window.location.href = `/sessions/${sData.id}`;
+                      const sData = await sResp.json().catch(() => ({}));
+
+                      if (!sResp.ok || !sData?.ok) {
+                        // Show the real server message to help diagnose
+                        const msg =
+                          sData?.error ||
+                          sData?.body ||
+                          `Failed to create session (${sResp.status})`;
+                        alert(msg);
+                        return;
+                      }
+
+                      // Navigate to the new session page
+                      const id = sData.id as string;
+                      window.location.href = `/sessions/${id}`;
                     } catch (err: any) {
                       alert(err?.message || "Failed to create session");
                     } finally {

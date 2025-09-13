@@ -1,63 +1,113 @@
 import { NextResponse } from "next/server";
+import Airtable from "airtable";
+import { getTableFields } from "@/lib/airtable-metadata";
 
-const MIN_PROBLEM_LEN = 3;
 const DEFAULT_PROBLEM = "New troubleshooting session";
+const TB_SESSIONS = process.env.TB_SESSIONS || "Sessions";
+
+function getAirtableBase() {
+  const API_KEY = process.env.AIRTABLE_API_KEY;
+  const BASE_ID = process.env.AIRTABLE_BASE_ID;
+  if (!API_KEY || !BASE_ID) {
+    throw new Error("Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID");
+  }
+  Airtable.configure({ apiKey: API_KEY });
+  return { base: new Airtable().base(BASE_ID), API_KEY, BASE_ID };
+}
+
+function validRecId(v?: string | null) {
+  return !!v && typeof v === "string" && v.startsWith("rec");
+}
 
 export async function POST(req: Request) {
   try {
+    const { base, API_KEY, BASE_ID } = getAirtableBase();
+
     const body = (await req.json().catch(() => ({}))) as {
       equipmentId?: string;
       problem?: string;
-      // ...any other fields you support
     };
 
     const equipmentId = (body?.equipmentId || "").trim();
-    if (!equipmentId || !equipmentId.startsWith("rec")) {
+    if (!validRecId(equipmentId)) {
       return NextResponse.json(
-        { ok: false, error: "equipmentId (rec...) required" },
+        { ok: false, error: "equipmentId must be a valid Airtable record id (starts with rec)" },
         { status: 400 }
       );
     }
 
-    let problem =
-      typeof body?.problem === "string" ? body.problem.trim() : "";
-    if (problem.length < MIN_PROBLEM_LEN) problem = DEFAULT_PROBLEM;
+    // Problem fallback
+    let problem = (body?.problem || "").trim();
+    if (problem.length < 3) problem = DEFAULT_PROBLEM;
 
-    // Create session in Airtable
-    const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY!;
-    const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID!;
-    const TB_SESSIONS = process.env.TB_SESSIONS || "Sessions";
+    // Discover available fields on the Sessions table
+    const allow = new Set(await getTableFields(base, TB_SESSIONS));
 
-    const createUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(TB_SESSIONS)}`;
-    const res = await fetch(createUrl, {
+    // Flexible candidates
+    const LINK_FIELDS = [
+      "Rig",
+      "Equipment",
+      "RigEquipment",
+      "EquipmentInstance",
+      "EquipmentInstances",
+      "Rig Equipment",
+    ];
+    const PROBLEM_FIELDS = ["Problem", "Issue", "Summary", "Title", "Finding", "Finding Title"];
+
+    const firstExisting = (cands: string[]) => cands.find((f) => allow.has(f));
+
+    const linkKey = firstExisting(LINK_FIELDS);
+    if (!linkKey) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "No equipment link field found on Sessions table",
+          debug: { table: TB_SESSIONS, allow: [...allow], tried: LINK_FIELDS },
+        },
+        { status: 500 }
+      );
+    }
+
+    const problemKey = firstExisting(PROBLEM_FIELDS);
+
+    // Build Airtable fields payload
+    const fields: Record<string, any> = {};
+    fields[linkKey] = [{ id: equipmentId }];
+    if (problemKey) fields[problemKey] = problem;
+
+    // REST create (avoids SDK quirks)
+    const url = `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TB_SESSIONS)}`;
+    const res = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+        Authorization: `Bearer ${API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        records: [{
-          fields: {
-            Equipment: [equipmentId],
-            Problem: problem,
-            Status: "Open",
-            CreatedAt: new Date().toISOString(),
-          }
-        }]
-      }),
+      body: JSON.stringify({ records: [{ fields }] }),
     });
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       return NextResponse.json(
-        { ok: false, error: "Airtable create failed", status: res.status, body: text },
+        {
+          ok: false,
+          error: "Airtable create failed",
+          status: res.status,
+          body: text,
+          debug: { table: TB_SESSIONS, fields },
+        },
         { status: 502 }
       );
     }
 
-    const json = await res.json() as any;
+    const json = (await res.json().catch(() => ({}))) as any;
     const id = json?.records?.[0]?.id;
-    if (!id) throw new Error("Create failed - no record ID");
+    if (!validRecId(id)) {
+      return NextResponse.json(
+        { ok: false, error: "Create succeeded but no record id returned", debug: json },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ ok: true, id });
   } catch (err: any) {
