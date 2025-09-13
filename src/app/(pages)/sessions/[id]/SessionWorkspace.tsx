@@ -84,6 +84,7 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
   const [fParts, setFParts] = useState("");
   const [reportURL, setReportURL] = useState("");
   
+  // TEMP: placeholder until chat store/append is wired for optimistic doc bubbles
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const addMessage: ((m: any) => void) | undefined = undefined;
   
