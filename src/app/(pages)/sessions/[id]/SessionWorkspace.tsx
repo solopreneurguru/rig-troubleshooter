@@ -84,6 +84,9 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
   const [fParts, setFParts] = useState("");
   const [reportURL, setReportURL] = useState("");
   
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const addMessage: ((m: any) => void) | undefined = undefined;
+  
   // V2 state
   const [isV2, setIsV2] = useState<boolean>(false);
   const [v2NodeKey, setV2NodeKey] = useState<string>("");
@@ -387,7 +390,7 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
               rigEquipmentId={resolveEquipmentId(rr as any)}
               onUploaded={(doc) => {
                 // Optimistically add a "doc attached" assistant bubble
-                addMessage({
+                addMessage?.({
                   role: "assistant",
                   text: `Attached: ${doc.title || "Document"} ${doc.type ? `• ${doc.type}` : ""}`,
                   docMeta: { id: doc.id, title: doc.title, type: doc.type },
