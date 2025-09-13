@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withDeadline } from "@/lib/withDeadline";
 import { getTableFields } from "@/lib/airtable-metadata"; // we can still use metadata helper
-import { getBase } from "@/lib/airtable"; // only to resolve base envs (no SDK create)
+import Airtable from "airtable";
 
 type FieldMap = Record<string, any>;
 const toPojo = (o: any): FieldMap =>
@@ -23,6 +23,15 @@ const validRecId = (v: any) => typeof v === "string" && v.startsWith("rec") && v
 
 function firstExisting(allow: Set<string>, candidates: string[]) {
   return candidates.find((f) => allow.has(f));
+}
+
+function getAirtableBase() {
+  const API_KEY = process.env.AIRTABLE_API_KEY;
+  const BASE_ID = process.env.AIRTABLE_BASE_ID;
+  if (!API_KEY || !BASE_ID) throw new Error("Airtable env missing");
+  
+  Airtable.configure({ apiKey: API_KEY });
+  return new Airtable().base(BASE_ID);
 }
 
 export async function POST(req: Request) {
@@ -65,7 +74,8 @@ export async function POST(req: Request) {
     const rigEquipmentId = rawId!.trim();
 
     // Find which fields exist on the Documents table
-    const allow = await getTableFields(TB_DOCS);
+    const base = getAirtableBase();
+    const allow = await getTableFields(base, TB_DOCS);
     const allowSet = new Set(allow);
 
     const nameKey = firstExisting(allowSet, NAME_FIELDS);
