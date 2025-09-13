@@ -11,6 +11,7 @@ import ChatPanel from "./ChatPanel";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DocsPanel from "./DocsPanel";
 import React from "react";
+import UploadInChat from "./UploadInChat";
 
 type AnyRec = Record<string, any>;
 
@@ -379,7 +380,21 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
       {/* LEFT: Chat Panel */}
       <div className="col-span-3">
         <ErrorBoundary>
-          <ChatPanel sessionId={sessionId} />
+          <div className="flex flex-col gap-2">
+            <ChatPanel sessionId={sessionId} />
+            <UploadInChat
+              sessionId={sessionId}
+              rigEquipmentId={resolveEquipmentId(rr as any)}
+              onUploaded={(doc) => {
+                // Optimistically add a "doc attached" assistant bubble
+                addMessage({
+                  role: "assistant",
+                  text: `Attached: ${doc.title || "Document"} ${doc.type ? `• ${doc.type}` : ""}`,
+                  docMeta: { id: doc.id, title: doc.title, type: doc.type },
+                });
+              }}
+            />
+          </div>
         </ErrorBoundary>
       </div>
       {/* CENTER: Main Content */}
