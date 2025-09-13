@@ -6,7 +6,7 @@ export async function GET() {
     { path: "/api/diagnostics/airtable", method: "GET", description: "Airtable connection test" },
     { path: "/api/diagnostics/latency", method: "GET", description: "Server latency test" },
     { path: "/api/rigs/list", method: "GET", description: "List rigs (with timeout)" },
-    { path: "/api/equipment/instances/create", method: "POST", description: "Create equipment (with timeout)" },
+    { path: "/api/equipment/create", method: "POST", description: "Create equipment (schema-agnostic)" },
     { path: "/api/sessions/create", method: "POST", description: "Create session (with timeout)" },
   ];
 

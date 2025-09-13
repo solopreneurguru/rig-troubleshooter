@@ -41,7 +41,7 @@ export default function DebugPage() {
     },
     
     'Create Equipment Test': async () => {
-      const response = await fetch('/api/equipment/instances/create', {
+      const response = await fetch('/api/equipment/create', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ 

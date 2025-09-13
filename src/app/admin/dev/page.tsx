@@ -142,7 +142,7 @@ export default function DevPage() {
           onClick={async ()=>{
             setOut("creating demo equipment…");
             try {
-              const r = await fetch("/api/equipment/instances/create", {
+              const r = await fetch("/api/equipment/create", {
                 method:"POST",
                 headers:{ "content-type":"application/json" },
                 body: JSON.stringify({ name:"DDD", rigName:"Demo Rig Alpha", typeName:"TopDrive" }),
