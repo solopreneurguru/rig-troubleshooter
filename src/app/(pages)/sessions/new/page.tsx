@@ -488,54 +488,53 @@ export default function NewSessionPage() {
                     if (!canSubmit || equipmentCreating) return;
                     setEquipmentCreating(true);
                     try {
-                      // Prefer existing/manual id; else create new equipment first.
-                      let equipId = effectiveEquipmentId;
-
-                      if (!equipId) {
-                        // Create-new path
-                        const resp = await fetch("/api/equipment/create", {
+                      // Helper to create session and navigate
+                      async function startSessionFor(equipId: string) {
+                        const DEFAULT_PROBLEM = "New troubleshooting session";
+                        const sResp = await fetch("/api/sessions/create", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({
-                            name: newEquipmentName.trim(),
-                            serial: newEquipmentSerial || undefined,
-                            type: newEquipmentType || undefined,
-                            plcDocUrl: newEquipmentPLCProject || undefined,
+                            equipmentId: equipId,
+                            problem: DEFAULT_PROBLEM,
                           }),
                         });
-                        const data = await resp.json();
-                        if (!resp.ok || !data?.id) throw new Error(data?.error || "Failed to create equipment");
-                        equipId = data.id as string;
+
+                        const sData = await sResp.json().catch(() => ({}));
+                        if (!sResp.ok || !sData?.ok) {
+                          throw new Error(sData?.error || `Failed to create session (${sResp.status})`);
+                        }
+
+                        window.location.href = `/sessions/${sData.id}`;
                       }
 
-                      // Now create the session linked to equipId
-                      const DEFAULT_PROBLEM = "New troubleshooting session";
-                      const payload = {
-                        equipmentId: equipId,
-                        problem: DEFAULT_PROBLEM,
-                      };
-
-                      const sResp = await fetch("/api/sessions/create", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(payload),
-                      });
-
-                      const sData = await sResp.json().catch(() => ({}));
-
-                      if (!sResp.ok || !sData?.ok) {
-                        // Show the real server message to help diagnose
-                        const msg =
-                          sData?.error ||
-                          sData?.body ||
-                          `Failed to create session (${sResp.status})`;
-                        alert(msg);
+                      if (effectiveEquipmentId) {
+                        // Use existing equipment directly
+                        await startSessionFor(effectiveEquipmentId);
                         return;
                       }
 
-                      // Navigate to the new session page
-                      const id = sData.id as string;
-                      window.location.href = `/sessions/${id}`;
+                      // Create new equipment via REST route
+                      const res = await fetch("/api/equipment/create", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          name: newEquipmentName.trim(),
+                          serial: newEquipmentSerial || undefined,
+                          typeId: newEquipmentType || undefined,
+                          note: newEquipmentPLCProject || undefined,
+                        }),
+                      });
+
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok || !data?.ok) {
+                        // Show helpful info if it's not our route (missing x-rt-route)
+                        const routeHdr = res.headers.get("x-rt-route");
+                        alert(data?.error || `Create failed${routeHdr ? ` at ${routeHdr}` : ""}`);
+                        return;
+                      }
+
+                      await startSessionFor(data.id);
                     } catch (err: any) {
                       alert(err?.message || "Failed to create session");
                     } finally {
