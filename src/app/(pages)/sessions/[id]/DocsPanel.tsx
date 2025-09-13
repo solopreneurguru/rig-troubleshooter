@@ -2,152 +2,87 @@
 
 import * as React from "react";
 
-type DocItem = {
-  id: string;
-  title: string;
-  url: string;
-  type?: string | null;
-  createdAt?: string | null;
-};
-
-function formatRelativeTime(iso?: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const diffMs = Date.now() - d.getTime();
-  const mins = Math.round(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.round(hrs / 24);
-  return `${days}d ago`;
-}
+type Doc = { id: string; title: string; type?: string; url?: string; createdAt?: string };
 
 export default function DocsPanel({ equipmentId }: { equipmentId: string }) {
-  const [docs, setDocs] = React.useState<DocItem[]>([]);
+  const [docs, setDocs] = React.useState<Doc[]>([]);
   const [types, setTypes] = React.useState<string[]>([]);
   const [selectedType, setSelectedType] = React.useState<string>("All");
-  const [searchQuery, setSearchQuery] = React.useState<string>("");
-  const [loading, setLoading] = React.useState<boolean>(false);
-  const [error, setError] = React.useState<string>("");
+  const [q, setQ] = React.useState("");
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (!equipmentId) return;
-    let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-      setError("");
+    let aborted = false;
+    (async () => {
+      if (!equipmentId?.startsWith("rec")) {
+        setError("No equipment selected.");
+        setLoading(false);
+        return;
+      }
       try {
-        const url = new URL("/api/documents/by-equipment", window.location.origin);
-        url.searchParams.set("rec", equipmentId);
-        url.searchParams.set("limit", "200");
-        if (selectedType !== "All") {
-          url.searchParams.set("type", selectedType);
-        }
-        if (searchQuery) {
-          url.searchParams.set("q", searchQuery);
-        }
+        setLoading(true);
+        setError(null);
+        const params = new URLSearchParams({ rec: equipmentId, limit: "50" });
+        if (selectedType && selectedType !== "All") params.set("type", selectedType);
+        if (q) params.set("q", q);
 
-        const res = await fetch(url.toString());
-        if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          throw new Error(text || `HTTP ${res.status}`);
-        }
+        const res = await fetch(`/api/documents/by-equipment?${params.toString()}`);
         const data = await res.json();
 
-        // assume data.items is unknown — coerce safely
-        const items: DocItem[] = Array.isArray(data?.items) ? data.items : [];
-        if (cancelled) return;
+        if (aborted) return;
+        if (!res.ok || !data?.ok) {
+          setError(data?.error || `Failed to load (HTTP ${res.status})`);
+          setDocs([]);
+          setTypes([]);
+          return;
+        }
+
+        const items: Doc[] = Array.isArray(data.items) ? data.items : [];
         setDocs(items);
 
-        // unique types as string[]
-        const uniqueTypes: string[] = Array.from(
-          new Set(items.map(d => (d.type ?? "").trim()).filter((s): s is string => !!s))
-        );
-        setTypes(uniqueTypes);
+        const unique = Array.from(
+          new Set(items.map(d => (d?.type ?? "")).filter(Boolean))
+        ) as string[];
+        setTypes(unique);
       } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Failed to load documents");
+        if (!aborted) setError(e?.message || "Failed to load documents");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!aborted) setLoading(false);
       }
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [equipmentId, selectedType, searchQuery]);
-
-  const filtered = React.useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return docs.filter((d) => {
-      const typeOk = selectedType === "All" || (d.type ?? "") === selectedType;
-      const textOk = q === "" || d.title.toLowerCase().includes(q);
-      return typeOk && textOk;
-    });
-  }, [docs, selectedType, searchQuery]);
+    })();
+    return () => { aborted = true; };
+  }, [equipmentId, selectedType, q]);
 
   return (
-    <div className="flex flex-col gap-3 p-3 border-l border-neutral-800 min-w-[320px] max-w-[420px]">
-      <div className="flex items-center gap-2">
-        <select
-          className="px-2 py-1 rounded bg-neutral-900 border border-neutral-700 text-sm"
-          value={selectedType}
-          onChange={(e) => setSelectedType(e.target.value)}
-        >
-          <option value="All">All Types</option>
-          {types.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
+    <div className="p-3 space-y-2">
+      <div className="flex gap-2">
+        <select value={selectedType} onChange={e => setSelectedType(e.target.value)}
+          className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm">
+          <option>All</option>
+          {types.map(t => <option key={t}>{t}</option>)}
         </select>
-        <input
-          className="flex-1 px-2 py-1 rounded bg-neutral-900 border border-neutral-700 text-sm"
-          placeholder="Search titles..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search titles…"
+          className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm" />
       </div>
 
-      {loading && <div className="text-xs text-neutral-400">Loading…</div>}
-      {error && (
-        <div className="text-xs text-red-400 border border-red-700/50 rounded p-2">
-          {error}
-        </div>
-      )}
+      {loading && <div className="text-xs text-neutral-500">Loading…</div>}
+      {error && <div className="text-xs text-red-400">{error}</div>}
 
-      <div className="flex flex-col gap-2">
-        {filtered.map((doc) => (
-          <div
-            key={doc.id}
-            className="flex items-center justify-between gap-2 px-2 py-1 rounded border border-neutral-800 hover:bg-neutral-900"
-          >
-            <div className="min-w-0">
-              <a
-                href={doc.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-emerald-400 hover:underline truncate block"
-                title={doc.title}
-              >
-                {doc.title}
-              </a>
-              <div className="flex items-center gap-2 text-[11px] text-neutral-500">
-                {doc.type && (
-                  <span className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-200">
-                    {doc.type}
-                  </span>
-                )}
-                {doc.createdAt && <span>{formatRelativeTime(doc.createdAt)}</span>}
-              </div>
+      <div className="space-y-2">
+        {docs.map(d => (
+          <div key={d.id} className="flex items-center justify-between gap-2">
+            <a className="text-sm hover:underline" href={d.url} target="_blank" rel="noreferrer">
+              {d.title || "(Untitled)"}
+            </a>
+            <div className="flex items-center gap-2">
+              {d.type ? <span className="text-[11px] px-1.5 py-0.5 rounded bg-neutral-800">{d.type}</span> : null}
+              {d.createdAt ? <span className="text-[11px] text-neutral-500">{new Date(d.createdAt).toLocaleDateString()}</span> : null}
             </div>
           </div>
         ))}
-
-        {!loading && !error && filtered.length === 0 && (
-          <div className="text-xs text-neutral-500">No documents found.</div>
+        {!loading && !error && docs.length === 0 && (
+          <div className="text-xs text-neutral-500">No documents for this equipment.</div>
         )}
       </div>
     </div>

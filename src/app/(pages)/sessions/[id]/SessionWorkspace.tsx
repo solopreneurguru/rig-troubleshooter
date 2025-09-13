@@ -12,6 +12,20 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import DocsPanel from "./DocsPanel";
 import React from "react";
 
+// Utility: pick the first linked EquipmentInstances id from common field names
+function resolveEquipmentId(session: any): string | undefined {
+  const f = (session?.fields ?? session) || {};
+  const CANDIDATES = ["Equipment", "RigEquipment", "EquipmentInstance", "EquipmentInstances", "Equipment Id"];
+  for (const k of CANDIDATES) {
+    const v = f[k];
+    if (Array.isArray(v) && v[0] && typeof v[0] === "string" && v[0].startsWith("rec")) return v[0];
+    if (typeof v === "string" && v.startsWith("rec")) return v;
+  }
+  // some code paths may stash it at top-level, keep this as last resort
+  if (typeof session?.equipmentId === "string" && session.equipmentId.startsWith("rec")) return session.equipmentId;
+  return undefined;
+}
+
 type Step = { 
   key: string; 
   instruction: string; 
@@ -616,20 +630,19 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
             : !isV2 && step 
             ? normalizeCitations(step.citation)
             : [];
-          const equipmentId = rr.testpoints.length > 0 ? rr.testpoints[0].fields.Equipment?.[0] : undefined;
+          const equipmentId = resolveEquipmentId(rr?.session || rr);
           return <CitationsPanel citations={currentCitations} equipmentId={equipmentId} />;
         })()}
 
-        <div className="space-y-4">
-          <div className="text-sm font-semibold">Docs / Test Points</div>
+        <aside className="w-80 border-l border-neutral-800">
           {equipmentId ? (
             <DocsPanel equipmentId={equipmentId} />
           ) : (
-            <div className="p-4 text-xs text-gray-500">
-              Select equipment (or open a session that has Equipment linked) to see documents.
+            <div className="p-4 text-sm text-neutral-500">
+              Select or attach equipment to see documents.
             </div>
           )}
-        </div>
+        </aside>
         
         <section>
           <h3 className="font-semibold">Docs / Test Points</h3>
