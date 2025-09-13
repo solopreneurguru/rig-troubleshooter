@@ -1,39 +1,69 @@
-import { NextResponse } from 'next/server';
-import { createSessionViaSdk } from '@/lib/airtableSdk';
+import { NextResponse } from "next/server";
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-export const preferredRegion = 'iad1';
+const MIN_PROBLEM_LEN = 3;
+const DEFAULT_PROBLEM = "New troubleshooting session";
 
 export async function POST(req: Request) {
-  const t0 = Date.now();
-  console.log("[api] ▶ sessions/create");
   try {
-    const body = await req.json().catch(() => ({}));
-    const problem = String(body?.problem ?? '').trim();
-    const equipmentId = body?.equipmentId ? String(body.equipmentId) : undefined;
-    const rigId = body?.rigId ? String(body.rigId) : undefined;
+    const body = (await req.json().catch(() => ({}))) as {
+      equipmentId?: string;
+      problem?: string;
+      // ...any other fields you support
+    };
 
-    if (problem.length < 3) {
-      console.log("[api] ◀ sessions/create validation-fail", { ms: Date.now()-t0 });
-      return NextResponse.json({ ok:false, error:'problem (min 3 chars) required' }, { status: 422 });
+    const equipmentId = (body?.equipmentId || "").trim();
+    if (!equipmentId || !equipmentId.startsWith("rec")) {
+      return NextResponse.json(
+        { ok: false, error: "equipmentId (rec...) required" },
+        { status: 400 }
+      );
     }
 
-    // Minimal, schema-aligned fields (no Title write: Title is a Formula)
-    const fields: Record<string, any> = {
-      Problem: problem,
-      // If 'Open' is a valid Status option in Airtable, uncomment next line:
-      // Status: 'Open',
-    };
-    if (rigId) fields.Rig = [rigId];
-    if (equipmentId) fields.EquipmentInstance = [equipmentId];
+    let problem =
+      typeof body?.problem === "string" ? body.problem.trim() : "";
+    if (problem.length < MIN_PROBLEM_LEN) problem = DEFAULT_PROBLEM;
 
-    const id = await createSessionViaSdk(fields);
-    console.log("[api] ◀ sessions/create ok", { ms: Date.now()-t0, id });
-    return NextResponse.json({ ok:true, id, redirect:`/sessions/${id}` }, { status: 201 });
-  } catch (e: any) {
-    console.log("[api] ◀ sessions/create fail", { ms: Date.now()-t0, msg: e?.message || String(e) });
-    console.error('[api] sessions/create', e?.message || e);
-    return NextResponse.json({ ok:false, error: e?.message || 'timeout' }, { status: 503 });
+    // Create session in Airtable
+    const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY!;
+    const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID!;
+    const TB_SESSIONS = process.env.TB_SESSIONS || "Sessions";
+
+    const createUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(TB_SESSIONS)}`;
+    const res = await fetch(createUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        records: [{
+          fields: {
+            Equipment: [equipmentId],
+            Problem: problem,
+            Status: "Open",
+            CreatedAt: new Date().toISOString(),
+          }
+        }]
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return NextResponse.json(
+        { ok: false, error: "Airtable create failed", status: res.status, body: text },
+        { status: 502 }
+      );
+    }
+
+    const json = await res.json() as any;
+    const id = json?.records?.[0]?.id;
+    if (!id) throw new Error("Create failed - no record ID");
+
+    return NextResponse.json({ ok: true, id });
+  } catch (err: any) {
+    return NextResponse.json(
+      { ok: false, error: err?.message || "Failed to create session" },
+      { status: 500 }
+    );
   }
 }

@@ -507,10 +507,14 @@ export default function NewSessionPage() {
                       }
 
                       // Now create the session linked to equipId
+                      const DEFAULT_PROBLEM = "New troubleshooting session";
                       const sResp = await fetch("/api/sessions/create", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ equipmentId: equipId }),
+                        body: JSON.stringify({
+                          equipmentId: equipId,
+                          problem: DEFAULT_PROBLEM,
+                        }),
                       });
                       const sData = await sResp.json();
                       if (!sResp.ok || !sData?.id) throw new Error(sData?.error || "Failed to create session");
