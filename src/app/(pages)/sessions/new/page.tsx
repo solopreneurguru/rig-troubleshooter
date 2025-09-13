@@ -164,6 +164,11 @@ export default function NewSessionPage() {
   const [equipmentCreateError, setEquipmentCreateError] = useState<string|null>(null);
   const [equipmentCreating, setEquipmentCreating] = useState(false);
   
+  // Helpers for equipment ID validation
+  const validRec = (v: string) => /^rec[a-zA-Z0-9]{14,}$/.test(v.trim());
+  const effectiveEquipmentId = validRec(manualRecId) ? manualRecId.trim() : (selectedEquipmentId || "");
+  const canSubmit = !!(effectiveEquipmentId || newEquipmentName.trim().length > 0);
+  
   const router = useRouter();
 
   useEffect(() => {
@@ -477,8 +482,48 @@ export default function NewSessionPage() {
                 />
                 <button
                   type="button"
-                  onClick={createEquipmentInstance}
-                  disabled={equipmentCreating || !newEquipmentName.trim()}
+                  onClick={async () => {
+                    if (!canSubmit || equipmentCreating) return;
+                    setEquipmentCreating(true);
+                    try {
+                      // Prefer existing/manual id; else create new equipment first.
+                      let equipId = effectiveEquipmentId;
+
+                      if (!equipId) {
+                        // Create-new path
+                        const resp = await fetch("/api/equipment/instances", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            name: newEquipmentName.trim(),
+                            serial: newEquipmentSerial || undefined,
+                            type: newEquipmentType || undefined,
+                            plcDocUrl: newEquipmentPLCProject || undefined,
+                          }),
+                        });
+                        const data = await resp.json();
+                        if (!resp.ok || !data?.id) throw new Error(data?.error || "Failed to create equipment");
+                        equipId = data.id as string;
+                      }
+
+                      // Now create the session linked to equipId
+                      const sResp = await fetch("/api/sessions/create", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ equipmentId: equipId }),
+                      });
+                      const sData = await sResp.json();
+                      if (!sResp.ok || !sData?.id) throw new Error(sData?.error || "Failed to create session");
+
+                      // Navigate to the session
+                      window.location.href = `/sessions/${sData.id}`;
+                    } catch (err: any) {
+                      alert(err?.message || "Failed to create session");
+                    } finally {
+                      setEquipmentCreating(false);
+                    }
+                  }}
+                  disabled={!canSubmit || equipmentCreating}
                   className="w-full px-3 py-1 rounded bg-blue-600 disabled:opacity-60"
                 >
                   {equipmentCreating ? "Creating…" : "Create"}
