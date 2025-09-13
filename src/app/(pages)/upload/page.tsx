@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 type RigEquipment = {
   id: string;
   name: string;
-  equipmentType: string;
 };
 
 const DOC_TYPES = [
@@ -18,6 +17,7 @@ const DOC_TYPES = [
 export default function UploadPage() {
   const [equipment, setEquipment] = useState<RigEquipment[]>([]);
   const [selectedRig, setSelectedRig] = useState("");
+  const [manualEquipId, setManualEquipId] = useState("");
   const [title, setTitle] = useState("");
   const [docType, setDocType] = useState("Manual");
   const [file, setFile] = useState<File | null>(null);
@@ -45,8 +45,14 @@ export default function UploadPage() {
   }
 
   async function handleUpload() {
-    if (!selectedRig || !title || !file) {
+    if (!title || !file) {
       setError("Please fill in all required fields");
+      return;
+    }
+
+    const resolvedEquipmentId = (manualEquipId?.trim() || selectedRig || "").trim();
+    if (!resolvedEquipmentId.startsWith("rec")) {
+      setError("Please select equipment or paste a valid record id (starts with 'rec').");
       return;
     }
 
@@ -58,7 +64,7 @@ export default function UploadPage() {
       // Step 1: Upload file to Vercel Blob
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("rigEquipmentId", selectedRig);
+      formData.append("rigEquipmentId", resolvedEquipmentId);
       formData.append("title", title);
       formData.append("docType", docType);
 
@@ -77,7 +83,7 @@ export default function UploadPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          rigEquipmentId: selectedRig,
+          equipmentId: resolvedEquipmentId,
           title,
           docType,
           url: blobResult.url,
@@ -107,6 +113,7 @@ export default function UploadPage() {
       setTitle("");
       setFile(null);
       setSelectedRig("");
+      setManualEquipId("");
 
     } catch (err: any) {
       setError(err.message || "Upload failed");
@@ -120,7 +127,7 @@ export default function UploadPage() {
       <h1 className="text-2xl font-bold mb-6">Upload Document</h1>
       
       <div className="space-y-4">
-        {/* Rig Selection */}
+        {/* Equipment Selection */}
         <div>
           <label className="block text-sm font-medium mb-2">
             Equipment *
@@ -138,6 +145,18 @@ export default function UploadPage() {
               </option>
             ))}
           </select>
+
+          <div className="mt-2">
+            <label className="block text-xs text-gray-400">
+              Or paste Equipment Record ID (starts with <code>rec</code>)
+            </label>
+            <input
+              value={manualEquipId}
+              onChange={(e) => setManualEquipId(e.target.value)}
+              placeholder="recXXXXXXXXXXXXXX"
+              className="mt-1 w-full rounded border border-gray-600 bg-black/20 px-3 py-2 text-sm"
+            />
+          </div>
         </div>
 
         {/* Title */}
@@ -194,7 +213,7 @@ export default function UploadPage() {
         {/* Upload Button */}
         <button
           onClick={handleUpload}
-          disabled={uploading || !selectedRig || !title || !file}
+          disabled={uploading || (!selectedRig && !manualEquipId) || !title || !file}
           className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
         >
           {uploading ? "Uploading..." : "Upload Document"}

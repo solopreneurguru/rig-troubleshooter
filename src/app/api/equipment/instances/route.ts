@@ -1,109 +1,59 @@
 import { NextResponse } from "next/server";
-import { withDeadline } from "@/lib/withDeadline";
-import Airtable from "airtable";
-
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-export const preferredRegion = "iad1";
-
-function getBase() {
-  const API_KEY = process.env.AIRTABLE_API_KEY;
-  const BASE_ID = process.env.AIRTABLE_BASE_ID;
-  if (!API_KEY || !BASE_ID) throw new Error("Airtable env missing");
-  
-  Airtable.configure({ apiKey: API_KEY });
-  return new Airtable().base(BASE_ID);
-}
-
-// Common field names to try in order of preference
-const NAME_FIELDS = [
-  "Name",
-  "Title",
-  "Equipment Name",
-  "Equip Name",
-  "Label",
-  "Equipment",
-  "Description"
-];
-
-function firstStringField(fields: Record<string, unknown>): string | undefined {
-  for (const [key, value] of Object.entries(fields)) {
-    if (typeof value === "string" && value.trim()) {
-      return value.trim();
-    }
-  }
-  return undefined;
-}
-
-function findBestName(record: any): string {
-  try {
-    const fields = record.fields || {};
-    
-    // Try preferred field names first
-    for (const field of NAME_FIELDS) {
-      const value = fields[field];
-      if (typeof value === "string" && value.trim()) {
-        return value.trim();
-      }
-    }
-
-    // Fall back to first string field
-    const firstString = firstStringField(fields);
-    if (firstString) {
-      return firstString;
-    }
-
-    // Last resort: use record ID
-    return record.id || "Unnamed Equipment";
-  } catch (e) {
-    return record.id || "Unnamed Equipment";
-  }
-}
 
 export async function GET() {
   try {
-    const TB_RIG_EQUIP = process.env.TB_RIG_EQUIP;
-    if (!TB_RIG_EQUIP) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: "RigEquipment table not configured" 
-      }, { status: 500 });
+    const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY!;
+    const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID!;
+    const tableName =
+      process.env.TB_RIG_EQUIP ||
+      process.env.TB_EQUIPMENT_INSTANCES ||
+      "EquipmentInstances";
+
+    if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+      return NextResponse.json(
+        { ok: false, error: "Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID" },
+        { status: 500 }
+      );
     }
 
-    const base = getBase();
-    const rigEquip = base(TB_RIG_EQUIP);
+    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(
+      tableName
+    )}?maxRecords=200`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
+      cache: "no-store",
+    });
+    const json = await res.json();
 
-    // Get all records without field filtering
-    const records = await withDeadline(
-      rigEquip.select({
-        sort: [{ field: "Name", direction: "asc" }] // Keep sorting by Name if it exists
-      }).firstPage(),
-      8000,
-      'list-rig-equipment'
-    );
+    if (!res.ok) {
+      return NextResponse.json(
+        { ok: false, error: json?.error?.message || "airtable list failed" },
+        { status: 500 }
+      );
+    }
 
-    const items = records.map((record) => ({
-      id: record.id,
-      name: findBestName(record)
+    const NAME_FIELDS = ["Name","Title","Label","Equipment","Equipment Name","Description"];
+    const pickName = (fields: any) => {
+      for (const k of NAME_FIELDS) {
+        const v = fields?.[k];
+        if (typeof v === "string" && v.trim()) return v.trim();
+      }
+      for (const [, v] of Object.entries(fields || {})) {
+        if (typeof v === "string" && v.trim()) return v.trim();
+      }
+      return "Unnamed Equipment";
+    };
+
+    const items = (json.records || []).map((r: any) => ({
+      id: r.id,
+      name: pickName(r.fields),
     }));
 
-    return NextResponse.json({
-      ok: true,
-      items,
-      count: items.length
-    });
-
+    return NextResponse.json({ ok: true, items, count: items.length, table: tableName });
   } catch (e: any) {
-    if (e?.message?.includes('deadline')) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: 'deadline', 
-        label: e.message 
-      }, { status: 503 });
-    }
-    return NextResponse.json({ 
-      ok: false, 
-      error: e?.message || "rig equipment list failed" 
-    }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: e?.message || "unexpected error" },
+      { status: 500 }
+    );
   }
 }
