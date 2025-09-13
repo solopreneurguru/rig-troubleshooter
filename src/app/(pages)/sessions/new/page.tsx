@@ -143,7 +143,13 @@ export default function NewSessionPage() {
   const [showEquipmentModal, setShowEquipmentModal] = useState(false);
   const [selectedEquipmentInstance, setSelectedEquipmentInstance] = useState<EquipmentInstance | null>(null);
   const [equipmentTypes, setEquipmentTypes] = useState<EquipmentType[]>([]);
-  const [equipmentInstances, setEquipmentInstances] = useState<EquipmentInstance[]>([]);
+  
+  // Equipment loading state
+  const [equipLoading, setEquipLoading] = useState(true);
+  const [equipError, setEquipError] = useState<string | null>(null);
+  const [equipItems, setEquipItems] = useState<{id:string; name:string}[]>([]);
+  const [manualRecId, setManualRecId] = useState("");
+  const [selectedEquipmentId, setSelectedEquipmentId] = useState("");
   
   // Additional state for rig/equipment selection
   const [selectedRigId, setSelectedRigId] = useState<string>("");
@@ -161,24 +167,39 @@ export default function NewSessionPage() {
   const router = useRouter();
 
   useEffect(() => {
+    let aborted = false;
     (async () => {
       try {
         // Load equipment types
         const etRes = await fetch("/api/equipment/types");
         const etData = await etRes.json();
-        if (etData.ok) setEquipmentTypes(etData.types || []);
+        if (!aborted && etData.ok) setEquipmentTypes(etData.types || []);
         
         // Load equipment instances
-        const eiRes = await fetch("/api/equipment/instances");
-        const eiData = await eiRes.json();
-        if (eiData.ok) setEquipmentInstances(eiData.instances || []);
-        
-      } catch (e) {
-        console.log("Failed to load data:", e);
+        setEquipLoading(true);
+        const res = await fetch('/api/equipment/instances');
+        const data = await res.json();
+        if (!aborted) {
+          if (data?.ok && Array.isArray(data.items)) {
+            setEquipItems(data.items);
+            setEquipError(null);
+          } else {
+            setEquipError(data?.error || 'Failed to load equipment');
+          }
+        }
+      } catch (e: any) {
+        if (!aborted) {
+          console.log("Failed to load data:", e);
+          setEquipError(e?.message || 'Failed to load equipment');
+        }
       } finally {
-        setLoading(false);
+        if (!aborted) {
+          setLoading(false);
+          setEquipLoading(false);
+        }
       }
     })();
+    return () => { aborted = true; };
   }, []);
 
   // Load filtered packs when equipment instance changes
@@ -216,6 +237,18 @@ export default function NewSessionPage() {
 
   
   async function createEquipmentInstance() {
+    const resolvedEquipmentId =
+      manualRecId?.startsWith('rec') ? manualRecId :
+      selectedEquipmentId?.startsWith('rec') ? selectedEquipmentId :
+      '';
+
+    if (resolvedEquipmentId) {
+      // If we have a valid equipment ID, use it directly
+      setSelectedEquipmentInstance({ id: resolvedEquipmentId, Name: equipItems.find(it => it.id === resolvedEquipmentId)?.name || resolvedEquipmentId });
+      setShowEquipmentModal(false);
+      return;
+    }
+
     if (!newEquipmentName.trim()) {
       setEquipmentCreateError("Please enter equipment name");
       return;
@@ -375,23 +408,34 @@ export default function NewSessionPage() {
           <div className="bg-zinc-900 text-zinc-100 border border-zinc-800 shadow-xl rounded-2xl p-6 max-w-md w-full max-h-96 overflow-y-auto">
             <h3 className="text-lg font-bold mb-4">Select or Create Equipment Instance</h3>
             
-            {/* Existing Equipment Instances */}
+            {/* Existing Equipment */}
             <div className="mb-4">
-              <h4 className="font-medium mb-2">Existing Equipment:</h4>
-              <div className="space-y-2 max-h-32 overflow-y-auto">
-                {equipmentInstances.map((instance) => (
-                  <button
-                    key={instance.id}
-                    onClick={() => {
-                      setSelectedEquipmentInstance(instance);
-                      setShowEquipmentModal(false);
-                    }}
-                    className="w-full text-left p-2 border border-zinc-700 rounded hover:bg-zinc-800 text-zinc-100"
-                  >
-                    <div className="font-medium">{instance.Name}</div>
-                    {instance.SerialNumber && <div className="text-sm text-zinc-400">S/N: {instance.SerialNumber}</div>}
-                  </button>
+              <label className="text-xs mb-1 block">Existing Equipment:</label>
+              <select
+                className="w-full rounded bg-neutral-900 border border-neutral-700 p-2"
+                value={selectedEquipmentId}
+                onChange={(e) => setSelectedEquipmentId(e.target.value)}
+              >
+                <option value="">Select...</option>
+                {equipItems.map(it => (
+                  <option key={it.id} value={it.id}>{it.name}</option>
                 ))}
+              </select>
+              {equipLoading && <div className="text-xs text-neutral-500 mt-1">Loading…</div>}
+              {equipError && <div className="text-xs text-red-400 mt-1">{equipError}</div>}
+            </div>
+
+            {/* Manual Record ID */}
+            <div className="mt-3 mb-4">
+              <label className="text-xs mb-1 block">Or paste Equipment Record ID (starts with rec)</label>
+              <input
+                className="w-full rounded bg-neutral-900 border border-neutral-700 p-2"
+                placeholder="recXXXXXXXXXXXXXX"
+                value={manualRecId}
+                onChange={(e) => setManualRecId(e.target.value.trim())}
+              />
+              <div className="text-[11px] text-neutral-500 mt-1">
+                If provided, this will override the selection above.
               </div>
             </div>
             
