@@ -493,7 +493,7 @@ export default function NewSessionPage() {
 
                       if (!equipId) {
                         // Create-new path
-                        const resp = await fetch("/api/equipment/instances", {
+                        const resp = await fetch("/api/equipment/create", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({
