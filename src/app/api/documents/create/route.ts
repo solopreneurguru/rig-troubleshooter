@@ -15,6 +15,36 @@ const AT_URL = AIRTABLE_BASE_ID
   ? `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(TB_DOCS)}`
   : "";
 
+const URL_FIELDS = [
+  "Url", "URL", "BlobUrl", "BlobURL", "Blob URL",
+  "FileUrl", "File URL", "Link"
+];
+
+const LINK_FIELDS = [
+  "Rig", "RigEquipment", "Equipment", "EquipmentInstance",
+  "EquipmentInstances", "Rig Equipment"
+];
+
+const NAME_FIELDS = ["Title", "Name", "Document Title", "Doc Title"];
+const TYPE_FIELDS = ["Type", "DocumentType", "Document Type", "DocType"];
+const ATTACHMENT_FIELDS = ["Attachments", "Files"];
+
+function normKey(s: string) {
+  return s.toLowerCase().replace(/[\s_]/g, "");
+}
+
+function findFirstExisting(allow: Set<string>, candidates: string[]) {
+  // Build a lookup of normalized actual field names -> real names
+  const map = new Map<string, string>();
+  for (const k of allow) map.set(normKey(k), k);
+
+  for (const want of candidates) {
+    const hit = map.get(normKey(want));
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
 async function tryCreate(fields: Json) {
   const res = await fetch(AT_URL, {
     method: "POST",
@@ -73,9 +103,9 @@ export async function POST(req: Request) {
     }
 
     // We don't depend on table schema now — we try common field names until one works.
-    const linkCandidates = ["RigEquipment", "Equipment", "EquipmentInstance", "EquipmentInstances"];
-    const urlCandidates = ["Url", "URL", "FileUrl", "File URL", "BlobUrl", "Blob URL"];
-    const attachCandidates = ["Attachments", "Files"];
+    const linkCandidates = LINK_FIELDS;
+    const urlCandidates = URL_FIELDS;
+    const attachCandidates = ATTACHMENT_FIELDS;
 
     const attempts: Json[] = [];
 
