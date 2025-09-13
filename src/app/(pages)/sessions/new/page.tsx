@@ -247,56 +247,58 @@ export default function NewSessionPage() {
       selectedEquipmentId?.startsWith('rec') ? selectedEquipmentId :
       '';
 
-    if (resolvedEquipmentId) {
-      // If we have a valid equipment ID, use it directly
-      setSelectedEquipmentInstance({ id: resolvedEquipmentId, Name: equipItems.find(it => it.id === resolvedEquipmentId)?.name || resolvedEquipmentId });
-      setShowEquipmentModal(false);
-      return;
-    }
-
-    if (!newEquipmentName.trim()) {
-      setEquipmentCreateError("Please enter equipment name");
-      return;
-    }
-    
     setEquipmentCreating(true);
     setEquipmentCreateError(null);
-    
+
     try {
-      const body = { 
-        name: newEquipmentName, 
-        rigName: selectedRigName || undefined,
-        typeName: selectedTypeName || undefined,
-        serial: newEquipmentSerial || undefined,
-        plcDocUrl: newEquipmentPLCProject || undefined
-      };
-      
-      const res = await fetch("/api/equipment/instances/create", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(9000),
-      });
-      
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.ok) {
-        throw new Error(json?.error || `HTTP ${res.status}`);
+      if (resolvedEquipmentId) {
+        // Use the existing record id directly
+        setSelectedEquipmentInstance({
+          id: resolvedEquipmentId,
+          Name: equipItems.find(it => it.id === resolvedEquipmentId)?.name || resolvedEquipmentId
+        });
+        setShowEquipmentModal(false);
+        return;
       }
-      
+
+      if (!newEquipmentName.trim()) {
+        setEquipmentCreateError("Please enter equipment name");
+        return;
+      }
+
+      // Create new equipment via REST route
+      const res = await fetch("/api/equipment/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newEquipmentName.trim(),
+          serial: newEquipmentSerial || undefined,
+          typeId: newEquipmentType || undefined,
+          note: newEquipmentPLCProject || undefined,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || data?.body || "Airtable create failed");
+      }
+
       // Success — reflect selection in parent state
-      setSelectedEquipmentInstance({ id: json.id, Name: json.name || newEquipmentName, SerialNumber: newEquipmentSerial });
-      setEquipmentCreating(false);
-      // Close modal
+      setSelectedEquipmentInstance({
+        id: data.id,
+        Name: newEquipmentName.trim(),
+        SerialNumber: newEquipmentSerial
+      });
+
+      // Close modal and reset form
       setShowEquipmentModal(false);
       setNewEquipmentName("");
       setNewEquipmentSerial("");
       setNewEquipmentType("");
       setNewEquipmentPLCProject("");
     } catch (e: any) {
-      const errorMsg = e?.message?.includes('timeout') 
-        ? "Request timed out (9s). Try again." 
-        : (e?.message || "Failed to create equipment");
-      setEquipmentCreateError(errorMsg);
+      setEquipmentCreateError(e?.message || "Failed to create equipment");
+    } finally {
       setEquipmentCreating(false);
     }
   }
