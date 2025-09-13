@@ -390,12 +390,14 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
               sessionId={sessionId}
               rigEquipmentId={resolveEquipmentId(rr as any)}
               onUploaded={(doc) => {
-                // Optimistically add a "doc attached" assistant bubble
-                addMessage?.({
-                  role: "assistant",
-                  text: `Attached: ${doc.title || "Document"} ${doc.type ? `• ${doc.type}` : ""}`,
-                  docMeta: { id: doc.id, title: doc.title, type: doc.type },
-                });
+                // Optimistically add a "doc attached" assistant bubble (no-op if store not wired)
+                if (typeof addMessage === "function") {
+                  (addMessage as (m: any) => void)({
+                    role: "assistant",
+                    text: `Attached: ${doc.title || "Document"} ${doc.type ? `• ${doc.type}` : ""}`,
+                    docMeta: { id: doc.id, title: doc.title, type: doc.type },
+                  });
+                }
               }}
             />
           </div>
