@@ -10,6 +10,7 @@ import CitationsPanel from "@/components/CitationsPanel";
 import ChatPanel from "./ChatPanel";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DocsPanel from "./DocsPanel";
+import React from "react";
 
 type Step = { 
   key: string; 
@@ -68,6 +69,31 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
   
   // Right rail state
   const [rr, setRR] = useState<{signals:any[]; testpoints:any[]; similar:any[]}>({signals:[],testpoints:[],similar:[]});
+  const [equipmentId, setEquipmentId] = React.useState<string | null>(null);
+
+  // 1) Try URL ?rec=… first (if you want to allow deep-links)
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const rec = params.get("rec");
+    if (rec && rec.startsWith("rec")) setEquipmentId(rec);
+  }, []);
+
+  // 2) If still missing, ask the new API for this session's equipment id
+  React.useEffect(() => {
+    if (equipmentId) return;
+    let aborted = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/sessions/equipment?id=${encodeURIComponent(sessionId)}`);
+        const data = await res.json();
+        if (!aborted && data?.ok && data?.equipmentId?.startsWith("rec")) {
+          setEquipmentId(data.equipmentId);
+        }
+      } catch {}
+    })();
+    return () => { aborted = true; };
+  }, [sessionId, equipmentId]);
 
   useEffect(() => {
     // Load tech from localStorage
@@ -594,17 +620,16 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
           return <CitationsPanel citations={currentCitations} equipmentId={equipmentId} />;
         })()}
 
-        {/* Documents Panel */}
-        {(() => {
-          const equipmentId = rr.testpoints.length > 0 ? rr.testpoints[0].fields.Equipment?.[0] : undefined;
-          return equipmentId ? (
+        <div className="space-y-4">
+          <div className="text-sm font-semibold">Docs / Test Points</div>
+          {equipmentId ? (
             <DocsPanel equipmentId={equipmentId} />
           ) : (
-            <div className="p-4 text-sm text-gray-500">
-              Select equipment to see documents
+            <div className="p-4 text-xs text-gray-500">
+              Select equipment (or open a session that has Equipment linked) to see documents.
             </div>
-          );
-        })()}
+          )}
+        </div>
         
         <section>
           <h3 className="font-semibold">Docs / Test Points</h3>

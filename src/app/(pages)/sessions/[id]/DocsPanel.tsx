@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-type Doc = {
+type DocItem = {
   id: string;
   title: string;
   url: string;
@@ -24,7 +24,7 @@ function formatRelativeTime(iso?: string | null): string {
 }
 
 export default function DocsPanel({ equipmentId }: { equipmentId: string }) {
-  const [docs, setDocs] = React.useState<Doc[]>([]);
+  const [docs, setDocs] = React.useState<DocItem[]>([]);
   const [types, setTypes] = React.useState<string[]>([]);
   const [selectedType, setSelectedType] = React.useState<string>("All");
   const [searchQuery, setSearchQuery] = React.useState<string>("");
@@ -42,6 +42,12 @@ export default function DocsPanel({ equipmentId }: { equipmentId: string }) {
         const url = new URL("/api/documents/by-equipment", window.location.origin);
         url.searchParams.set("rec", equipmentId);
         url.searchParams.set("limit", "200");
+        if (selectedType !== "All") {
+          url.searchParams.set("type", selectedType);
+        }
+        if (searchQuery) {
+          url.searchParams.set("q", searchQuery);
+        }
 
         const res = await fetch(url.toString());
         if (!res.ok) {
@@ -50,25 +56,14 @@ export default function DocsPanel({ equipmentId }: { equipmentId: string }) {
         }
         const data = await res.json();
 
-        // Normalize items into our Doc shape
-        const items: Doc[] = (data?.items ?? []).map((d: any) => ({
-          id: String(d?.id ?? ""),
-          title: String(d?.title ?? "Untitled"),
-          url: String(d?.url ?? "#"),
-          type: typeof d?.type === "string" ? d.type : null,
-          createdAt: typeof d?.createdAt === "string" ? d.createdAt : null,
-        }));
-
+        // assume data.items is unknown — coerce safely
+        const items: DocItem[] = Array.isArray(data?.items) ? data.items : [];
         if (cancelled) return;
         setDocs(items);
 
-        // Build a safe, strictly-typed string[] of unique types
-        const uniqueTypes = Array.from(
-          new Set(
-            items
-              .map((d) => (typeof d.type === "string" ? d.type.trim() : ""))
-              .filter((t): t is string => t.length > 0)
-          )
+        // unique types as string[]
+        const uniqueTypes: string[] = Array.from(
+          new Set(items.map(d => (d.type ?? "").trim()).filter((s): s is string => !!s))
         );
         setTypes(uniqueTypes);
       } catch (e: any) {
@@ -82,7 +77,7 @@ export default function DocsPanel({ equipmentId }: { equipmentId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [equipmentId]);
+  }, [equipmentId, selectedType, searchQuery]);
 
   const filtered = React.useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
