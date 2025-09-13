@@ -50,11 +50,10 @@ export default function UploadPage() {
       return;
     }
 
-    // resolve equipment id (manual overrides dropdown)
+    // manual overrides dropdown
     const resolvedEquipmentId = manualId?.trim() ? manualId.trim() : selectedEquipmentId;
 
-    // simple client-side guard
-    if (!resolvedEquipmentId || !resolvedEquipmentId.startsWith("rec")) {
+    if (!resolvedEquipmentId?.startsWith("rec")) {
       setError("Please select equipment or paste a valid rec… id.");
       return;
     }
@@ -82,17 +81,19 @@ export default function UploadPage() {
       }
 
       // Step 2: Create document record in Airtable
+      const payload = {
+        title,
+        docType,
+        url: blobResult.url,
+        rigEquipmentId: resolvedEquipmentId,
+        size: blobResult.size,
+        contentType: blobResult.contentType
+      };
+
       const docResponse = await fetch("/api/documents/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rigEquipmentId: resolvedEquipmentId,
-          title,
-          docType,
-          url: blobResult.url,
-          size: blobResult.size,
-          contentType: blobResult.contentType
-        })
+        body: JSON.stringify(payload)
       });
 
       const docResult = await docResponse.json();
@@ -106,8 +107,8 @@ export default function UploadPage() {
       setResult({
         blobUrl: blobResult.url,
         documentId: docResult.id,
-        title: docResult.title,
-        docType: docResult.docType,
+        title,
+        docType,
         size: blobResult.size,
         contentType: blobResult.contentType
       });

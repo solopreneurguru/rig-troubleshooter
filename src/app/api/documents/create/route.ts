@@ -26,8 +26,7 @@ function getBase() {
 }
 
 // Validate equipment record ID
-const validRecId = (v: any): boolean =>
-  typeof v === "string" && v.startsWith("rec") && v.length > 3;
+const validRecId = (v: any) => typeof v === "string" && v.startsWith("rec") && v.length > 3;
 
 export async function POST(req: Request) {
   try {
@@ -38,6 +37,7 @@ export async function POST(req: Request) {
       }, { status: 500 });
     }
 
+    // --- normalize incoming equipment id (accept several keys)
     const body = await req.json().catch(() => ({} as any));
 
     const rawId: string | null =
@@ -59,6 +59,7 @@ export async function POST(req: Request) {
     const { title, docType, url, size, contentType } = body;
 
     const base = getBase();
+    const docs = base(TB_DOCS);
 
     // Get available fields
     const allow = await getTableFields(base, TB_DOCS);
@@ -113,18 +114,27 @@ export async function POST(req: Request) {
       draft[dateKey] = new Date().toISOString();
     }
 
-    // Filter to only existing fields and create record
+    // setIfExists() filters only fields present in the table
     const fields = await setIfExists(base, TB_DOCS, draft);
-    const created = await withDeadline(
-      base(TB_DOCS).create([{ fields }]) as any,
-      8000,
-      'docs-create'
-    );
 
-    return NextResponse.json({
-      ok: true,
-      id: created[0].id
-    });
+    // ---- FIX BUILD: safely extract id from Airtable create() result
+    const createdRes = (await withDeadline(
+      docs.create([{ fields }]) as any,   // cast to any to satisfy TS
+      8000,
+      "docs-create"
+    )) as any;
+
+    const newId =
+      Array.isArray(createdRes) ? createdRes[0]?.id : createdRes?.[0]?.id ?? createdRes?.id;
+
+    if (!validRecId(newId)) {
+      return NextResponse.json(
+        { ok: false, error: "create returned no id", debug: { createdType: typeof createdRes } },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ ok: true, id: newId });
 
   } catch (e: any) {
     if (e?.message?.includes('deadline')) {
