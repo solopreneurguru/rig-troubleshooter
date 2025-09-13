@@ -1,6 +1,4 @@
-/* PATCH endpoint to update a document's type (for the dropdown in chat). */
-
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import Airtable from "airtable";
 import { getTableFields } from "@/lib/airtable-metadata";
 import { pickDocTypeKey } from "@/lib/classifyDoc";
@@ -14,14 +12,15 @@ function base() {
   return new Airtable().base(AIRTABLE_BASE_ID);
 }
 
+// Note the Next 15 signature: NextRequest + params: Promise<{ id: string }>
 export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
-    const body = await req.json().catch(() => ({}));
-    const { type } = body || {};
+    const { id } = await context.params; // must await in Next 15
+    const { type } = (await request.json().catch(() => ({}))) as { type?: string };
+
     if (!id) return NextResponse.json({ ok: false, error: "id required" }, { status: 400 });
     if (!type) return NextResponse.json({ ok: false, error: "type required" }, { status: 400 });
 
@@ -38,6 +37,7 @@ export async function PATCH(
     const updateUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(
       TB_DOCS
     )}`;
+
     const res = await fetch(updateUrl, {
       method: "PATCH",
       headers: {
