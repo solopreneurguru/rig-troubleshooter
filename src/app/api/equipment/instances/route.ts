@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 
 export async function GET() {
+  const routeName = "/api/equipment/instances";
+  const ok = (data: any, status = 200) =>
+    new NextResponse(JSON.stringify(data), {
+      status,
+      headers: { "Content-Type": "application/json", "x-rt-route": routeName },
+    });
+
   try {
     const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY!;
     const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID!;
@@ -10,9 +17,9 @@ export async function GET() {
       "EquipmentInstances";
 
     if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
-      return NextResponse.json(
+      return ok(
         { ok: false, error: "Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID" },
-        { status: 500 }
+        500
       );
     }
 
@@ -26,9 +33,9 @@ export async function GET() {
     const json = await res.json();
 
     if (!res.ok) {
-      return NextResponse.json(
+      return ok(
         { ok: false, error: json?.error?.message || "airtable list failed" },
-        { status: 500 }
+        500
       );
     }
 
@@ -49,11 +56,11 @@ export async function GET() {
       name: pickName(r.fields),
     }));
 
-    return NextResponse.json({ ok: true, items, count: items.length, table: tableName });
+    return ok({ ok: true, items, count: items.length, table: tableName });
   } catch (e: any) {
-    return NextResponse.json(
+    return ok(
       { ok: false, error: e?.message || "unexpected error" },
-      { status: 500 }
+      500
     );
   }
 }
