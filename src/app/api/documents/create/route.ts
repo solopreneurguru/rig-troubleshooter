@@ -1,72 +1,59 @@
 // src/app/api/documents/create/route.ts
 import { NextResponse } from "next/server";
 
+/**
+ * Minimal, schema-tolerant Documents create:
+ * - Uses Airtable REST only (no SDK) to avoid "o.fields is not a function"
+ * - Tries common field name variants; falls back between them automatically
+ */
+
 type Json = Record<string, any>;
 
-const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || "";
-const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID || "";
-const TB_DOCS = process.env.TB_DOCS || "Documents";
+function j(x: unknown): Json {
+  return x && typeof x === "object" ? (x as Json) : {};
+}
 
 function validRecId(id: unknown): id is string {
-  return typeof id === "string" && id.startsWith("rec");
+  return typeof id === "string" && id.startsWith("rec") && id.length >= 10;
 }
 
-const AT_URL = AIRTABLE_BASE_ID
-  ? `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(TB_DOCS)}`
-  : "";
-
-const URL_FIELDS = [
-  "Url", "URL", "BlobUrl", "BlobURL", "Blob URL",
-  "FileUrl", "File URL", "Link"
-];
-
-const LINK_FIELDS = [
-  "Rig", "RigEquipment", "Equipment", "EquipmentInstance",
-  "EquipmentInstances", "Rig Equipment"
-];
-
-const NAME_FIELDS = ["Title", "Name", "Document Title", "Doc Title"];
-const TYPE_FIELDS = ["Type", "DocumentType", "Document Type", "DocType"];
-const ATTACHMENT_FIELDS = ["Attachments", "Files"];
-
-function normKey(s: string) {
-  return s.toLowerCase().replace(/[\s_]/g, "");
-}
-
-function findFirstExisting(allow: Set<string>, candidates: string[]) {
-  // Build a lookup of normalized actual field names -> real names
-  const map = new Map<string, string>();
-  for (const k of allow) map.set(normKey(k), k);
-
-  for (const want of candidates) {
-    const hit = map.get(normKey(want));
-    if (hit) return hit;
-  }
-  return undefined;
-}
-
-async function tryCreate(fields: Json) {
-  const res = await fetch(AT_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${AIRTABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ records: [{ fields }] }),
-  });
+async function postAirtable(
+  baseId: string,
+  tableName: string,
+  apiKey: string,
+  fields: Record<string, any>
+) {
+  const res = await fetch(
+    `https://api.airtable.com/v0/${encodeURIComponent(baseId)}/${encodeURIComponent(
+      tableName
+    )}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ records: [{ fields }] }),
+    }
+  );
 
   const text = await res.text();
-  let json: any;
+  let json: Json = {};
   try {
     json = JSON.parse(text);
   } catch {
+    /* keep raw text in json.raw when non-JSON */
     json = { raw: text };
   }
+
   return { ok: res.ok, status: res.status, json, text };
 }
 
 export async function POST(req: Request) {
   try {
+    const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
+    const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
+    const TB_DOCS = process.env.TB_DOCS || "Documents";
     if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
       return NextResponse.json(
         { ok: false, error: "Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID" },
@@ -74,80 +61,65 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = (await req.json().catch(() => ({}))) as Json;
+    const body = j(await req.json().catch(() => ({})));
+    // Accept multiple client keys but normalize:
+    const equipmentId =
+      body.equipmentId || body.rigEquipmentId || body.rigId || body.equipId;
 
-    // Accept multiple key names from the client for flexibility
-    const title =
-      (body.title ?? body.name ?? body.documentTitle ?? "").toString().trim();
-    const docType =
-      (body.type ?? body.documentType ?? body.docType ?? "").toString().trim();
-    const url = (body.url ?? body.fileUrl ?? "").toString().trim();
+    const title = body.title ?? body.name ?? "";
+    const url = body.url ?? body.fileUrl ?? body.blobUrl ?? body.link ?? "";
+    const docType = body.type ?? body.docType ?? "Other";
 
-    const equipmentId = [body.equipmentId, body.rigEquipmentId, body.equipment]
-      .find(validRecId);
-
-    if (!title) {
-      return NextResponse.json({ ok: false, error: "title required" }, { status: 400 });
-    }
-    if (!equipmentId) {
+    if (!validRecId(equipmentId)) {
       return NextResponse.json(
-        { ok: false, error: "equipmentId (rec...) required" },
+        {
+          ok: false,
+          error: "rigEquipmentId required",
+          hint: "Pass an EquipmentInstances record id (starts with 'rec').",
+          got: equipmentId,
+        },
         { status: 400 }
       );
     }
-    if (!url) {
+    if (typeof title !== "string" || !title.trim()) {
       return NextResponse.json(
-        { ok: false, error: "file url missing" },
+        { ok: false, error: "title required" },
+        { status: 400 }
+      );
+    }
+    if (typeof url !== "string" || !url.trim()) {
+      return NextResponse.json(
+        { ok: false, error: "file URL required (url)" },
         { status: 400 }
       );
     }
 
-    // We don't depend on table schema now — we try common field names until one works.
-    const linkCandidates = LINK_FIELDS;
-    const urlCandidates = URL_FIELDS;
-    const attachCandidates = ATTACHMENT_FIELDS;
+    // We'll try a few common field name variants until one works.
+    const linkKeys = ["Rig", "RigEquipment", "Equipment", "EquipmentInstance", "EquipmentInstances"];
+    const urlKeys = ["BlobURL", "URL", "Url", "Link"];
+    const titleKeys = ["Title", "Name", "Document Title", "Doc Title"];
+    const typeKeys = ["DocType", "Type", "DocumentType", "Document Type"];
 
-    const attempts: Json[] = [];
+    const attempts: Array<{ fields: Record<string, any>; status?: number; err?: Json }> = [];
 
-    for (const linkKey of linkCandidates) {
-      // First: URL style fields
-      for (const urlKey of urlCandidates) {
-        attempts.push({
-          Title: title,         // harmless if field doesn't exist
-          Name: title,          // harmless if field doesn't exist
-          DocType: docType,     // harmless if field doesn't exist
-          Type: docType,        // harmless if field doesn't exist
-          [linkKey]: [{ id: equipmentId }],
-          [urlKey]: url,
-        });
-      }
-      // Second: Attachment style fields
-      for (const aKey of attachCandidates) {
-        attempts.push({
-          Title: title,
-          Name: title,
-          DocType: docType,
-          Type: docType,
-          [linkKey]: [{ id: equipmentId }],
-          [aKey]: [{ url, filename: title }],
-        });
-      }
-    }
+    for (const linkKey of linkKeys) {
+      for (const urlKey of urlKeys) {
+        const fields: Record<string, any> = {};
 
-    let last: any = null;
-    for (const fields of attempts) {
-      const { ok, json, status } = await tryCreate(fields);
-      last = { status, json, fields };
-      const recId = json?.records?.[0]?.id;
-      if (ok && validRecId(recId)) {
-        return NextResponse.json({ ok: true, id: recId });
-      }
+        // choose first plausible keys for title/type
+        fields[titleKeys[0]] = title; // Title
+        fields[typeKeys[0]] = docType; // DocType
 
-      // If it's an "Unknown field name" error, keep trying other field combos.
-      const msg = (json?.error?.message ?? "").toString();
-      if (!/Unknown field name/i.test(msg)) {
-        // Stop on non-schema errors (e.g., permission, base/table mismatch)
-        break;
+        // link + url candidates for this attempt
+        fields[linkKey] = [equipmentId];
+        fields[urlKey] = url;
+
+        const r = await postAirtable(AIRTABLE_BASE_ID, TB_DOCS, AIRTABLE_API_KEY, fields);
+        if (r.ok && r.json?.records?.[0]?.id) {
+          return NextResponse.json({ ok: true, id: r.json.records[0].id, used: { linkKey, urlKey } });
+        }
+        attempts.push({ fields, status: r.status, err: r.json?.error ?? r.json });
+        // If it's "UNKNOWN_FIELD_NAME", try next variant; otherwise keep looping.
       }
     }
 
@@ -155,13 +127,13 @@ export async function POST(req: Request) {
       {
         ok: false,
         error: "Could not create document in Airtable (schema mismatch?)",
-        debug: last,
+        attempts, // includes the last few Airtable error bodies so we can see which field name failed
       },
-      { status: 502 }
+      { status: 422 }
     );
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "unexpected error" },
+      { ok: false, error: e?.message || String(e) },
       { status: 500 }
     );
   }
