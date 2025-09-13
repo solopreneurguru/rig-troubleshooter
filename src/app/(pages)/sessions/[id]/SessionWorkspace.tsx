@@ -12,17 +12,35 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import DocsPanel from "./DocsPanel";
 import React from "react";
 
-// Utility: pick the first linked EquipmentInstances id from common field names
-function resolveEquipmentId(session: any): string | undefined {
-  const f = (session?.fields ?? session) || {};
-  const CANDIDATES = ["Equipment", "RigEquipment", "EquipmentInstance", "EquipmentInstances", "Equipment Id"];
-  for (const k of CANDIDATES) {
-    const v = f[k];
-    if (Array.isArray(v) && v[0] && typeof v[0] === "string" && v[0].startsWith("rec")) return v[0];
-    if (typeof v === "string" && v.startsWith("rec")) return v;
+type AnyRec = Record<string, any>;
+
+function resolveEquipmentId(source: AnyRec | undefined): string | undefined {
+  if (!source) return;
+
+  // Search likely places for fields and denormalized ids
+  const pools: AnyRec[] = [
+    source,
+    source.session,                 // if present
+    source.fields,                  // direct fields
+    source.session?.fields,         // session fields
+  ].filter(Boolean);
+
+  const CANDIDATE_KEYS = [
+    "Equipment",
+    "RigEquipment",
+    "EquipmentInstance",
+    "EquipmentInstances",
+    "Equipment Id",
+  ];
+
+  for (const obj of pools) {
+    for (const key of CANDIDATE_KEYS) {
+      const val = obj[key];
+      if (Array.isArray(val) && typeof val[0] === "string" && val[0].startsWith("rec")) return val[0];
+      if (typeof val === "string" && val.startsWith("rec")) return val;
+    }
   }
-  // some code paths may stash it at top-level, keep this as last resort
-  if (typeof session?.equipmentId === "string" && session.equipmentId.startsWith("rec")) return session.equipmentId;
+
   return undefined;
 }
 
@@ -630,7 +648,7 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
             : !isV2 && step 
             ? normalizeCitations(step.citation)
             : [];
-          const equipmentId = resolveEquipmentId(rr?.session || rr);
+          const equipmentId = resolveEquipmentId(rr as any);
           return <CitationsPanel citations={currentCitations} equipmentId={equipmentId} />;
         })()}
 
