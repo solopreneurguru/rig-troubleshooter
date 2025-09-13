@@ -9,6 +9,7 @@ import { normalizeCitations } from "@/lib/citations";
 import CitationsPanel from "@/components/CitationsPanel";
 import ChatPanel from "./ChatPanel";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import DocsPanel from "./DocsPanel";
 
 type Step = { 
   key: string; 
@@ -591,6 +592,18 @@ export default function SessionWorkspace({ params }: { params: { id: string } })
             : [];
           const equipmentId = rr.testpoints.length > 0 ? rr.testpoints[0].fields.Equipment?.[0] : undefined;
           return <CitationsPanel citations={currentCitations} equipmentId={equipmentId} />;
+        })()}
+
+        {/* Documents Panel */}
+        {(() => {
+          const equipmentId = rr.testpoints.length > 0 ? rr.testpoints[0].fields.Equipment?.[0] : undefined;
+          return equipmentId ? (
+            <DocsPanel equipmentId={equipmentId} />
+          ) : (
+            <div className="p-4 text-sm text-gray-500">
+              Select equipment to see documents
+            </div>
+          );
         })()}
         
         <section>
