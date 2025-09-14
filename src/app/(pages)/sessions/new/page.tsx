@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import SessionCreateForm from "./SessionCreateForm";
 import DebugPanel from "./DebugPanel";
@@ -131,6 +131,7 @@ interface Rig {
 }
 
 export default function NewSessionPage() {
+  const router = useRouter();
   const [rigName, setRigName] = useState("");
   const [packs, setPacks] = useState<any[]>([]);
   const [rpKey, setRpKey] = useState("");
@@ -168,8 +169,6 @@ export default function NewSessionPage() {
   const validRec = (v: string) => /^rec[a-zA-Z0-9]{14,}$/.test(v.trim());
   const effectiveEquipmentId = validRec(manualRecId) ? manualRecId.trim() : (selectedEquipmentId || "");
   const canSubmit = !!(effectiveEquipmentId || newEquipmentName.trim().length > 0);
-  
-  const router = useRouter();
 
   useEffect(() => {
     let aborted = false;
@@ -207,57 +206,36 @@ export default function NewSessionPage() {
     return () => { aborted = true; };
   }, []);
 
-  // Load filtered packs when equipment instance changes
-  // DISABLED: Rule pack loading deferred until after session creation
-  // useEffect(() => {
-  //   if (selectedEquipmentInstance?.EquipmentType?.[0]) {
-  //     (async () => {
-  //       try {
-  //         const equipmentType = selectedEquipmentInstance.EquipmentType![0];
-  //         const r = await fetch(`/api/rulepacks/list?type=${encodeURIComponent(equipmentType)}`);
-  //         const j = await r.json();
-  //         if (j.ok) {
-  //           // Only show .v2 packs
-  //           const v2Packs = j.packs.filter((pack: any) => pack.key?.endsWith('.v2'));
-  //           setPacks(v2Packs);
-  //         }
-  //       } catch (e) {
-  //         console.log("Failed to load filtered packs:", e);
-  //       }
-  //     })();
-  //   }
-  // }, [selectedEquipmentInstance]);
-
-  async function handleManualPackSelection() {
-    if (!rpKey) {
-      alert("Please select a rule pack");
-      return;
-    }
-    
-    // When user clicks "Use Selected Pack", do NOT call update yet; just store the selected key in state
-    setRpKey(rpKey);
-    setShowAdvanced(false);
-    setOverrideHint("");
-  }
-
-  
-  async function createEquipmentInstance() {
-    const resolvedEquipmentId =
-      manualRecId?.startsWith('rec') ? manualRecId :
-      selectedEquipmentId?.startsWith('rec') ? selectedEquipmentId :
-      '';
-
-    setEquipmentCreating(true);
+  const handleCreate = useCallback(async (e?: React.FormEvent) => {
+    e?.preventDefault(); // stop full page reload if inside a <form>
     setEquipmentCreateError(null);
 
+    if (!canSubmit || equipmentCreating) return;
+    setEquipmentCreating(true);
+
     try {
+      const resolvedEquipmentId =
+        manualRecId?.startsWith('rec') ? manualRecId :
+        selectedEquipmentId?.startsWith('rec') ? selectedEquipmentId :
+        '';
+
       if (resolvedEquipmentId) {
-        // Use the existing record id directly
-        setSelectedEquipmentInstance({
-          id: resolvedEquipmentId,
-          Name: equipItems.find(it => it.id === resolvedEquipmentId)?.name || resolvedEquipmentId
+        // Use existing equipment directly
+        const res = await fetch("/api/sessions/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            equipmentId: resolvedEquipmentId,
+            problem: "New troubleshooting session",
+          }),
         });
-        setShowEquipmentModal(false);
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.ok || !data?.sessionId) {
+          throw new Error(data?.error || `Failed to create session (${res.status})`);
+        }
+
+        router.push(`/sessions/${data.sessionId}`);
         return;
       }
 
@@ -266,42 +244,36 @@ export default function NewSessionPage() {
         return;
       }
 
-      // Create new equipment via REST route
-      const res = await fetch("/api/equipment/create", {
+      // Create new equipment and session
+      const res = await fetch("/api/sessions/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: newEquipmentName.trim(),
-          serial: newEquipmentSerial || undefined,
-          typeId: newEquipmentType || undefined,
-          note: newEquipmentPLCProject || undefined,
+          problem: "New troubleshooting session",
+          newEquipment: {
+            name: newEquipmentName.trim(),
+            serial: newEquipmentSerial || undefined,
+            typeId: newEquipmentType || undefined,
+            note: newEquipmentPLCProject || undefined,
+          },
         }),
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) {
-        throw new Error(data?.error || data?.body || "Airtable create failed");
+      if (!res.ok || !data?.ok || !data?.sessionId) {
+        throw new Error(data?.error || `Failed to create session (${res.status})`);
       }
 
-      // Success — reflect selection in parent state
-      setSelectedEquipmentInstance({
-        id: data.id,
-        Name: newEquipmentName.trim(),
-        SerialNumber: newEquipmentSerial
-      });
-
-      // Close modal and reset form
-      setShowEquipmentModal(false);
-      setNewEquipmentName("");
-      setNewEquipmentSerial("");
-      setNewEquipmentType("");
-      setNewEquipmentPLCProject("");
-    } catch (e: any) {
-      setEquipmentCreateError(e?.message || "Failed to create equipment");
+      // Success - navigate to the new session
+      router.push(`/sessions/${data.sessionId}`);
+    } catch (err: any) {
+      const msg = err?.message || "Failed to create session";
+      setEquipmentCreateError(msg);
+      alert(msg);
     } finally {
       setEquipmentCreating(false);
     }
-  }
+  }, [canSubmit, equipmentCreating, manualRecId, selectedEquipmentId, newEquipmentName, newEquipmentSerial, newEquipmentType, newEquipmentPLCProject, router]);
 
   return (
     <main className="p-6 max-w-2xl space-y-4" role="group">
@@ -362,10 +334,23 @@ export default function NewSessionPage() {
       
       {/* Problem Description */}
       <div className="space-y-2">
-        <SessionCreateForm 
-          rigId={selectedRigId}
-          equipmentId={selectedEquipmentInstance?.id}
-        />
+        <form onSubmit={handleCreate} className="space-y-3">
+          <label className="block text-sm opacity-75">Problem Description *</label>
+          <textarea
+            className="w-full rounded bg-neutral-900 p-3"
+            placeholder="Describe your issue and equipment in detail…"
+            required
+            minLength={3}
+          />
+          {equipmentCreateError && <div className="text-red-400 text-sm">❌ {equipmentCreateError}</div>}
+          <button
+            type="submit"
+            disabled={equipmentCreating}
+            className="px-3 py-2 rounded bg-emerald-700 disabled:opacity-60"
+          >
+            {equipmentCreating ? "Creating…" : "Create Session"}
+          </button>
+        </form>
       </div>
       
       {/* Advanced Rule Pack Selection */}
@@ -396,7 +381,6 @@ export default function NewSessionPage() {
           </div>
         )}
       </div>
-      
       
       {/* Rig Selection Modal */}
       <RigPickerModal
@@ -484,63 +468,7 @@ export default function NewSessionPage() {
                 />
                 <button
                   type="button"
-                  onClick={async () => {
-                    if (!canSubmit || equipmentCreating) return;
-                    setEquipmentCreating(true);
-                    try {
-                      // Helper to create session and navigate
-                      async function startSessionFor(equipId: string) {
-                        const DEFAULT_PROBLEM = "New troubleshooting session";
-                        const sResp = await fetch("/api/sessions/create", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            equipmentId: equipId,
-                            problem: DEFAULT_PROBLEM,
-                          }),
-                        });
-
-                        const sData = await sResp.json().catch(() => ({}));
-                        if (!sResp.ok || !sData?.ok) {
-                          throw new Error(sData?.error || `Failed to create session (${sResp.status})`);
-                        }
-
-                        window.location.href = `/sessions/${sData.id}`;
-                      }
-
-                      if (effectiveEquipmentId) {
-                        // Use existing equipment directly
-                        await startSessionFor(effectiveEquipmentId);
-                        return;
-                      }
-
-                      // Create new equipment via REST route
-                      const res = await fetch("/api/equipment/create", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          name: newEquipmentName.trim(),
-                          serial: newEquipmentSerial || undefined,
-                          typeId: newEquipmentType || undefined,
-                          note: newEquipmentPLCProject || undefined,
-                        }),
-                      });
-
-                      const data = await res.json().catch(() => ({}));
-                      if (!res.ok || !data?.ok) {
-                        // Show helpful info if it's not our route (missing x-rt-route)
-                        const routeHdr = res.headers.get("x-rt-route");
-                        alert(data?.error || `Create failed${routeHdr ? ` at ${routeHdr}` : ""}`);
-                        return;
-                      }
-
-                      await startSessionFor(data.id);
-                    } catch (err: any) {
-                      alert(err?.message || "Failed to create session");
-                    } finally {
-                      setEquipmentCreating(false);
-                    }
-                  }}
+                  onClick={handleCreate}
                   disabled={!canSubmit || equipmentCreating}
                   className="w-full px-3 py-1 rounded bg-blue-600 disabled:opacity-60"
                 >
