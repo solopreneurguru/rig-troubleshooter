@@ -2,122 +2,109 @@ import { NextResponse } from "next/server";
 import { airtableCreate } from "@/lib/airtable-rest";
 
 type Body = {
-  // If present, we will use it; otherwise we will create new equipment first
   equipmentId?: string;
-
-  // Provided when creating new equipment
   newEquipment?: {
     name: string;
     serial?: string;
-    typeId?: string; // link to EquipmentTypes if available
-    note?: string;   // free-form notes / PLC link
+    typeId?: string;
+    note?: string;
   };
-
-  // Required for the session
   problem: string;
 };
 
 const TB_EQUIP = process.env.TB_EQUIPMENT_INSTANCES || "EquipmentInstances";
-const TB_EQUIP_TYPES = process.env.TB_EQUIPMENT_TYPES || "EquipmentTypes";
 const TB_SESSIONS = process.env.TB_SESSIONS || "Sessions";
 
-// Flexible field candidates so we don't break on Airtable schema tweaks
+// Order matters: put your most-likely field names first
+const EQUIP_LINK_CANDIDATES = [
+  "RigEquipment",
+  "Equipment",
+  "EquipmentInstance",
+  "EquipmentInstances",
+  "Rig",
+];
+
 const NAME_FIELDS = ["Name", "Title", "Equipment Name"];
 const SERIAL_FIELDS = ["Serial", "SerialNumber", "SN"];
-const EQUIPTYPE_LINK_FIELDS = ["EquipmentTypes", "EquipmentType", "Type"];
-const EQUIP_LINK_FIELDS = ["RigEquipment", "Equipment", "EquipmentInstance", "EquipmentInstances"];
-const PROBLEM_FIELDS = ["Problem", "Issue", "Notes", "Summary"];
 const DATE_FIELDS = ["CreatedAt", "Created", "Date", "Timestamp"];
+const PROBLEM_FIELDS = ["Problem", "Issue", "Notes", "Summary"];
 
-function pick(firsts: string[], allow: Set<string>, fallback?: string) {
-  for (const k of firsts) if (allow.has(k)) return k;
-  return fallback || firsts[0];
+function firstOf(cands: string[], fallback: string) {
+  return (allow?: Set<string>) => {
+    if (allow) for (const k of cands) if (allow.has(k)) return k;
+    // without schema, just use first as best-guess
+    return cands[0] || fallback;
+  };
+}
+const pickName = firstOf(NAME_FIELDS, "Name");
+const pickSerial = firstOf(SERIAL_FIELDS, "Serial");
+const pickDate = firstOf(DATE_FIELDS, "CreatedAt");
+const pickProblem = firstOf(PROBLEM_FIELDS, "Problem");
+
+function isUnknownFieldError(e: any) {
+  const msg = typeof e?.message === "string" ? e.message : String(e);
+  return msg.includes("UNKNOWN_FIELD_NAME") || msg.includes("Unknown field name");
 }
 
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Body;
 
-    if (!body || typeof body !== "object") {
-      return NextResponse.json({ ok: false, error: "invalid body" }, { status: 400 });
-    }
-    if (!body.equipmentId && !body.newEquipment?.name) {
-      return NextResponse.json({ ok: false, error: "equipmentId or newEquipment.name required" }, { status: 400 });
-    }
-    if (!body.problem || body.problem.trim().length < 3) {
+    if (!body?.problem || body.problem.trim().length < 3) {
       return NextResponse.json({ ok: false, error: "problem (min 3 chars) required" }, { status: 400 });
     }
 
-    // We cannot introspect fields cheaply without metadata permissions,
-    // so we build fields with broad candidates and let Airtable ignore unknowns.
-
-    // --- 1) Resolve equipment id (existing or create new)
+    // 1) Resolve equipment id (use provided or create)
     let equipmentId = body.equipmentId;
-
     if (!equipmentId) {
-      const allowEquip = new Set<string>([
-        ...NAME_FIELDS, ...SERIAL_FIELDS, ...EQUIPTYPE_LINK_FIELDS, ...DATE_FIELDS, "Notes", "PLCLink", "PLC Project Doc Link"
-      ]);
-
+      if (!body.newEquipment?.name || body.newEquipment.name.trim().length < 3) {
+        return NextResponse.json({ ok: false, error: "newEquipment.name (min 3 chars) required" }, { status: 400 });
+      }
       const ef: Record<string, any> = {};
-      // Name
-      const nameKey = pick(NAME_FIELDS, allowEquip, "Name");
-      ef[nameKey] = body.newEquipment!.name;
+      ef[pickName()] = body.newEquipment.name.trim();
+      if (body.newEquipment.serial) ef[pickSerial()] = body.newEquipment.serial;
+      // Optional details
+      ef[pickDate()] = new Date().toISOString();
 
-      // Serial
-      if (body.newEquipment!.serial) {
-        const snKey = pick(SERIAL_FIELDS, allowEquip, "Serial");
-        ef[snKey] = body.newEquipment!.serial;
-      }
-
-      // Optional type link
-      if (body.newEquipment!.typeId) {
-        const typeKey = pick(EQUIPTYPE_LINK_FIELDS, allowEquip, "EquipmentTypes");
-        ef[typeKey] = [body.newEquipment!.typeId];
-      }
-
-      // Optional note / PLC link
-      if (body.newEquipment!.note) {
-        const noteKey = allowEquip.has("Notes") ? "Notes" : (allowEquip.has("PLCLink") ? "PLCLink" : "Description");
-        ef[noteKey] = body.newEquipment!.note;
-      }
-
-      // Optional created timestamp
-      const dtKey = pick(DATE_FIELDS, allowEquip, "CreatedAt");
-      ef[dtKey] = new Date().toISOString();
-
-      const created = await airtableCreate(TB_EQUIP, ef);
-      equipmentId = created.id;
+      const createdEquip = await airtableCreate(TB_EQUIP, ef);
+      equipmentId = createdEquip.id;
     }
 
-    // --- 2) Create session
-    const allowSess = new Set<string>([
-      ...EQUIP_LINK_FIELDS, ...PROBLEM_FIELDS, ...DATE_FIELDS, "Status"
-    ]);
-    const sf: Record<string, any> = {};
+    // 2) Try to create session with equipment link using candidates
+    const baseFields = {
+      [pickProblem()]: body.problem.trim(),
+      [pickDate()]: new Date().toISOString(),
+    };
 
-    const linkKey = pick(EQUIP_LINK_FIELDS, allowSess, "RigEquipment");
-    sf[linkKey] = [equipmentId];
+    let lastErr: any = null;
+    for (const linkKey of EQUIP_LINK_CANDIDATES) {
+      const fields = { ...baseFields, [linkKey]: [equipmentId] };
+      try {
+        const session = await airtableCreate(TB_SESSIONS, fields);
+        const res = NextResponse.json({ ok: true, sessionId: session.id, equipmentId, linked: true, linkKey });
+        res.headers.set("x-rt-route", "/api/sessions/create");
+        return res;
+      } catch (e: any) {
+        lastErr = e;
+        if (!isUnknownFieldError(e)) {
+          // Different error -> bubble it up immediately
+          throw e;
+        }
+        // else try next candidate
+      }
+    }
 
-    const probKey = pick(PROBLEM_FIELDS, allowSess, "Problem");
-    sf[probKey] = body.problem.trim();
-
-    const dateKey = pick(DATE_FIELDS, allowSess, "CreatedAt");
-    sf[dateKey] = new Date().toISOString();
-
-    // optional status default
-    if (allowSess.has("Status")) sf["Status"] = "Open";
-
-    const session = await airtableCreate(TB_SESSIONS, sf);
-
-    const res = NextResponse.json({
+    // 3) If all candidates failed due to unknown field, create the session without the link
+    const minimal = await airtableCreate(TB_SESSIONS, baseFields);
+    return NextResponse.json({
       ok: true,
-      sessionId: session.id,
+      sessionId: minimal.id,
       equipmentId,
-      redirect: `/sessions/${session.id}`,
+      linked: false,
+      hint: "No equipment link field found on Sessions table. Please add a link-to-EquipmentInstances field.",
+      tried: EQUIP_LINK_CANDIDATES,
+      lastError: String(lastErr?.message || lastErr),
     });
-    res.headers.set("x-rt-route", "/api/sessions/create");
-    return res;
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err?.message || String(err) }, { status: 500 });
   }
