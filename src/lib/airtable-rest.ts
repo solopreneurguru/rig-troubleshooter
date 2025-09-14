@@ -1,3 +1,28 @@
+export const TB_CHATS = "Chats";
+export const F_CHAT_TEXT = "Text";
+
+export async function airtableGet(table: string, id: string) {
+  const API_KEY = process.env.AIRTABLE_API_KEY;
+  const BASE_ID = process.env.AIRTABLE_BASE_ID;
+  if (!API_KEY || !BASE_ID) throw new Error("Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID");
+
+  const url = `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(table)}/${id}?fields[]=${F_CHAT_TEXT}`;
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${API_KEY}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`airtable get failed: ${res.status} ${body}`);
+  }
+
+  const json = await res.json().catch(() => ({}));
+  return json;
+}
+
 export async function airtableCreate(
   tableName: string,
   fields: Record<string, any>,

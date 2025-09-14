@@ -54,6 +54,7 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
   const [assistantThinking, setAssistantThinking] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const sendingRef = useRef(false);
 
   const scrollToBottom = () => chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
@@ -109,12 +110,22 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
   }, [sessionId]);
 
   const onSend = useCallback(async (text: string) => {
-    if (!text?.trim()) return;
+    if (!text?.trim() || sendingRef.current) return;
+    sendingRef.current = true;
 
     // Add user message and persist
     const userMessage = { role: "user", text };
     setMessageCount(prev => prev + 1);
     await persistOutgoingMessage(sessionId, userMessage);
+
+    // Append user message to chat text
+    if (sessionId) {
+      fetch(`/api/chats/${sessionId}/append-text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: "user", text }),
+      }).catch(() => {}); // fire-and-forget
+    }
 
     setShowSuggestions(false);
     setAssistantThinking(true);
@@ -140,9 +151,18 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
       }
     } catch {
       setMessageCount(prev => prev + 1);
+      // Append assistant message to chat text
+      if (sessionId && j?.reply) {
+        fetch(`/api/chats/${sessionId}/append-text`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role: "assistant", text: j.reply }),
+        }).catch(() => {}); // fire-and-forget
+      }
     } finally {
       setAssistantThinking(false);
       scrollToBottom();
+      sendingRef.current = false;
     }
   }, [sessionId, sessionData?.session?.equipment?.id]);
 
