@@ -2,6 +2,8 @@
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
 
+const isBrowser = typeof window !== "undefined";
+
 interface Props {
   onUploaded?: (docId: string, meta: { title: string; type: string; url: string }) => void;
   equipmentId?: string;
@@ -78,6 +80,8 @@ export default function UploadFromChat({ onUploaded, equipmentId, disabled }: Pr
     disabled: disabled || uploading,
     multiple: false,
   });
+
+  if (!isBrowser) return null;
 
   return (
     <div className="relative">

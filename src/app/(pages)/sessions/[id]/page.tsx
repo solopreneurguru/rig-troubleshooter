@@ -8,5 +8,5 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
     redirect('/sessions/new');
   }
   
-  return <SessionWorkspace params={{ id }} />;
+  return <SessionWorkspace sessionId={id} />;
 }

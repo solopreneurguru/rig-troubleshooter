@@ -8,7 +8,13 @@ type Message = {
   createdAt?: string;
 };
 
-export default function ChatPanel({ sessionId }: { sessionId: string }) {
+interface Props {
+  sessionId: string;
+  onMessageCountChange?: (count: number) => void;
+  uploadComponent?: React.ReactNode;
+}
+
+export default function ChatPanel({ sessionId, onMessageCountChange, uploadComponent }: Props) {
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [text, setText] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -16,8 +22,8 @@ export default function ChatPanel({ sessionId }: { sessionId: string }) {
 
   // Debug logging and sessionId validation
   React.useEffect(() => {
-    console.debug("ChatPanel sessionId", sessionId);
-  }, [sessionId]);
+    onMessageCountChange?.(messages.length);
+  }, [messages.length, onMessageCountChange]);
 
   async function load() {
     setErr(null);
@@ -89,14 +95,17 @@ export default function ChatPanel({ sessionId }: { sessionId: string }) {
             onChange={(e) => setText(e.target.value)}
             placeholder="Describe what you see, attach steps, or ask a question…"
           />
-          <button
-            type="button"
-            disabled={busy || !text.trim() || !sessionId}
-            onClick={send}
-            className="self-end px-3 py-2 rounded bg-emerald-700 text-sm disabled:opacity-60"
-          >
-            {busy ? "Sending…" : "Send"}
-          </button>
+          <div className="flex flex-col gap-2">
+            {uploadComponent}
+            <button
+              type="button"
+              disabled={busy || !text.trim() || !sessionId}
+              onClick={send}
+              className="self-end px-3 py-2 rounded bg-emerald-700 text-sm disabled:opacity-60"
+            >
+              {busy ? "Sending…" : "Send"}
+            </button>
+          </div>
         </div>
         <div className="text-[10px] mt-2 opacity-60">
           Safety: never energize or open panels without authorization and PPE. Confirm hazards in the step runner.
