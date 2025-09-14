@@ -24,3 +24,21 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Chips used for quick checks */
+.chip {
+  @apply rounded-full border border-neutral-800 bg-neutral-900/80 px-3 py-1 hover:bg-neutral-800 hover:border-neutral-700 transition;
+}
+
+/* Optional, nicer scrollbars (Chromium-based) */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #2a2a2a;
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}

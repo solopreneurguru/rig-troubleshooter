@@ -22,7 +22,7 @@ async function hydrateMessages(sessionId: string, addMessage?: (m: any) => void)
     }
   } catch {}
 }
-import ChatPanel from "./ChatPanel";
+import ChatBubble from "./ChatBubble";
 import DocsPanel from "./DocsPanel";
 import ReportComposer from "./ReportComposer";
 import UploadFromChat from "./UploadFromChat";
@@ -188,9 +188,9 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
   }, [draft, isTyping, handleSend]);
 
   return (
-    <div className="flex h-full">
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+    <div className="h-[calc(100vh-112px)] flex">
+      {/* Left: chat column */}
+      <section className="flex-1 flex flex-col border-r border-neutral-900">
         {/* Top Bar */}
         <div className="flex flex-col px-4 py-2 border-b border-neutral-800">
           <div className="flex items-center justify-between">
@@ -232,81 +232,64 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
           )}
         </div>
 
-        {/* Chat Panel */}
-        <div className="flex-1 min-h-0 relative">
-          <ChatPanel
-            sessionId={sessionId}
-            uploadComponent={
-              <UploadFromChat
-                equipmentId={equipmentId}
-                onUploaded={(docId, meta) => {
-                  // Handle uploaded file - you can add it to the chat or update UI
-                  console.log("File uploaded:", docId, meta);
-                }}
-              />
-            }
-          />
-
-          {/* Input Area */}
-          <div className="border-t border-neutral-800 p-4">
-            <form
-              onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-              className="flex gap-2 items-end mb-4"
-            >
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="Describe what you see, attach steps, or ask a question…"
-                className="w-full resize-y min-h-[44px] rounded bg-neutral-900 px-3 py-2"
-                disabled={isTyping}
-              />
-              <button
-                type="submit"
-                className="px-3 py-1.5 bg-emerald-600 text-white rounded hover:bg-emerald-500 disabled:opacity-50 text-sm whitespace-nowrap"
-                disabled={!draft.trim() || isTyping}
-              >
-                {isTyping ? "Sending…" : "Send"}
-              </button>
-            </form>
-
-            {/* Quick Actions */}
-            {showSuggestions && (
-              <>
-                <div className="text-xs text-neutral-500 mb-1">Quick checks (optional)</div>
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {[
-                    "Check current mode",
-                    "Read commanded vs actual RPM",
-                    "List recent parameter changes"
-                  ].map((s) => (
-                    <button
-                      key={s}
-                      className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:hover:bg-neutral-800"
-                      onClick={() => insertOrSend(s)}
-                      disabled={isTyping}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                  <button
-                    className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:hover:bg-neutral-800"
-                    onClick={() => {/* open upload flow */}}
-                    disabled={isTyping}
-                  >
-                    Upload PLC snapshot
-                  </button>
-                </div>
-              </>
-            )}
-
-            {isTyping && (
-              <div className="p-2 rounded bg-neutral-900 w-fit text-gray-300">
-                <TypingDots />
+        {/* Chat Area */}
+        <div className="flex-1 flex flex-col relative">
+          {/* Messages */}
+          <div id="chat-scroll" className="flex-1 overflow-y-auto px-4 pt-4 pb-28">
+            {messages.length === 0 ? (
+              <div className="mt-6 text-sm text-neutral-500">
+                No messages yet. Start the conversation.
               </div>
+            ) : (
+              messages.map((m, i) => (
+                <ChatBubble key={i} role={m.role} text={m.text} />
+              ))
             )}
-
-            <div ref={chatEndRef} />
+            {isTyping && (
+              <div className="text-xs text-neutral-500 px-1 mt-1">Assistant is typing…</div>
+            )}
           </div>
+
+          {/* Composer */}
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+            className="sticky bottom-0 inset-x-0 border-t border-neutral-800/60 bg-neutral-950/85 backdrop-blur supports-[backdrop-filter]:bg-neutral-950/75"
+          >
+            <div className="px-4 py-3 space-y-2">
+              {/* Quick checks */}
+              <div className="flex flex-wrap gap-2 text-xs text-neutral-400">
+                <span className="opacity-80">Quick checks (optional)</span>
+                <button type="button" className="chip" onClick={() => setDraft(prev => prev + (prev ? "\n" : "") + "Check current mode")}>Check current mode</button>
+                <button type="button" className="chip" onClick={() => setDraft(prev => prev + (prev ? "\n" : "") + "Read commanded vs actual RPM")}>Read commanded vs actual RPM</button>
+                <button type="button" className="chip" onClick={() => setDraft(prev => prev + (prev ? "\n" : "") + "List recent parameter changes")}>List recent parameter changes</button>
+                <button type="button" className="chip" onClick={() => setDraft(prev => prev + (prev ? "\n" : "") + "Upload PLC snapshot")}>Upload PLC snapshot</button>
+              </div>
+
+              {/* Composer row */}
+              <div className="flex items-end gap-2">
+                <textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  placeholder="Describe what you see, attach steps, or ask a question…"
+                  rows={1}
+                  className="w-full max-h-40 min-h-[44px] resize-y rounded-xl bg-neutral-900 border border-neutral-800 focus:border-blue-600/60 focus:outline-none px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500"
+                />
+                <button
+                  type="submit"
+                  disabled={!draft.trim() || isTyping}
+                  className="rounded-xl px-4 py-2 text-sm bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-sm"
+                >
+                  {isTyping ? "Sending…" : "Send"}
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
 
         {/* Report Composer (shown after Finish clicked) */}
@@ -319,7 +302,7 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
             />
           </div>
         )}
-      </div>
+      </section>
 
       {/* Right Rail */}
       <div
