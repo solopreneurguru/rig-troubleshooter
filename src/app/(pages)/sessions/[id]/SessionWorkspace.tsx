@@ -53,8 +53,14 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [assistantThinking, setAssistantThinking] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
+  const [input, setInput] = useState<string>("");
+  const [isSending, setIsSending] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const sendingRef = useRef(false);
+  
+  // Derived state for send button
+  const attachmentCount = 0; // TODO: integrate with your upload component if needed
+  const canSend = input.trim().length > 0 || attachmentCount > 0;
 
   const scrollToBottom = () => chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
@@ -109,8 +115,26 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
     }
   }, [sessionId]);
 
-  const onSend = useCallback(async (text: string) => {
-    if (!text?.trim() || sendingRef.current) return;
+  // Helper to either append text or auto-send
+  const insertOrSend = useCallback((snippet: string) => {
+    if (isSending) return; // locked while streaming/sending
+    const trimmed = input.trim();
+    if (trimmed.length === 0) {
+      // empty box: insert + auto-send
+      setInput(snippet);
+      // wait for state flush: schedule send on next tick
+      setTimeout(() => handleSend(snippet), 0);
+    } else {
+      // append into the input without sending
+      setInput(prev => (prev.endsWith(" ") || prev.length === 0) ? prev + snippet : prev + " " + snippet);
+    }
+  }, [input, isSending]);
+
+  const handleSend = useCallback(async (forcedText?: string) => {
+    const text = (forcedText ?? input).trim();
+    if (!text || isSending || sendingRef.current) return;
+    
+    setIsSending(true);
     sendingRef.current = true;
 
     // Add user message and persist
@@ -164,14 +188,17 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
       }
       
       setMessageCount(prev => prev + 1);
+      setInput(""); // clear on success
     } catch {
       setMessageCount(prev => prev + 1);
+      console.error("send failed");
     } finally {
       setAssistantThinking(false);
+      setIsSending(false);
       scrollToBottom();
       sendingRef.current = false;
     }
-  }, [sessionId, sessionData?.session?.equipment?.id]);
+  }, [sessionId, sessionData?.session?.equipment?.id, input]);
 
   return (
     <div className="flex h-full">
@@ -234,25 +261,54 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
             }
           />
 
-          {/* Suggestions and Typing Indicator */}
+          {/* Input Area */}
           <div className="absolute bottom-0 left-0 right-0 p-4">
+            <div className="flex gap-2 mb-4">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Type your message..."
+                className="flex-1 bg-neutral-800 rounded p-2 text-sm resize-none"
+                rows={1}
+                disabled={isSending}
+              />
+              <button
+                onClick={() => handleSend()}
+                disabled={!canSend || isSending}
+                className="px-3 py-1.5 bg-emerald-600 text-white rounded hover:bg-emerald-500 disabled:opacity-50 text-sm whitespace-nowrap"
+              >
+                Send
+              </button>
+            </div>
+
+            {/* Quick Actions */}
             {showSuggestions && (
-              <div className="flex flex-wrap gap-2 mb-2">
-                {[
-                  "Check current mode",
-                  "Read commanded vs actual RPM",
-                  "List recent parameter changes",
-                  "Upload PLC snapshot"
-                ].map((s) => (
+              <>
+                <div className="text-xs text-neutral-500 mb-1">Quick checks (optional)</div>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {[
+                    "Check current mode",
+                    "Read commanded vs actual RPM",
+                    "List recent parameter changes"
+                  ].map((s) => (
+                    <button
+                      key={s}
+                      className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:hover:bg-neutral-800"
+                      onClick={() => insertOrSend(s)}
+                      disabled={isSending}
+                    >
+                      {s}
+                    </button>
+                  ))}
                   <button
-                    key={s}
-                    className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700"
-                    onClick={() => onSend(s)}
+                    className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:hover:bg-neutral-800"
+                    onClick={() => {/* open upload flow */}}
+                    disabled={isSending}
                   >
-                    {s}
+                    Upload PLC snapshot
                   </button>
-                ))}
-              </div>
+                </div>
+              </>
             )}
 
             {assistantThinking && (
