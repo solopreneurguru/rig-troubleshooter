@@ -1,88 +1,111 @@
 "use client";
+import { useState, useEffect } from "react";
 
-import * as React from "react";
+interface Doc {
+  id: string;
+  title: string;
+  type: string;
+  url: string;
+}
 
-type Doc = { id: string; title: string; type?: string; url?: string; createdAt?: string };
+interface Props {
+  sessionId: string;
+  equipmentId?: string;
+}
 
-export default function DocsPanel({ equipmentId }: { equipmentId: string }) {
-  const [docs, setDocs] = React.useState<Doc[]>([]);
-  const [types, setTypes] = React.useState<string[]>([]);
-  const [selectedType, setSelectedType] = React.useState<string>("All");
-  const [q, setQ] = React.useState("");
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+export default function DocsPanel({ sessionId, equipmentId }: Props) {
+  const [docs, setDocs] = useState<Doc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<string>("all");
 
-  React.useEffect(() => {
-    let aborted = false;
-    (async () => {
-      if (!equipmentId?.startsWith("rec")) {
-        setError("No equipment selected.");
-        setLoading(false);
-        return;
-      }
+  useEffect(() => {
+    let mounted = true;
+    async function loadDocs() {
       try {
         setLoading(true);
         setError(null);
-        const params = new URLSearchParams({ rec: equipmentId, limit: "50" });
-        if (selectedType && selectedType !== "All") params.set("type", selectedType);
-        if (q) params.set("q", q);
 
-        const res = await fetch(`/api/documents/by-equipment?${params.toString()}`);
+        const res = await fetch(`/api/documents/by-equipment/${equipmentId || "none"}`);
         const data = await res.json();
 
-        if (aborted) return;
+        if (!mounted) return;
+
         if (!res.ok || !data?.ok) {
-          setError(data?.error || `Failed to load (HTTP ${res.status})`);
-          setDocs([]);
-          setTypes([]);
-          return;
+          throw new Error(data?.error || "Failed to load documents");
         }
 
-        const items: Doc[] = Array.isArray(data.items) ? data.items : [];
-        setDocs(items);
-
-        const unique = Array.from(
-          new Set(items.map(d => (d?.type ?? "")).filter(Boolean))
-        ) as string[];
-        setTypes(unique);
+        setDocs(data.documents || []);
       } catch (e: any) {
-        if (!aborted) setError(e?.message || "Failed to load documents");
+        if (!mounted) return;
+        setError(e?.message || "Failed to load documents");
       } finally {
-        if (!aborted) setLoading(false);
+        if (mounted) setLoading(false);
       }
-    })();
-    return () => { aborted = true; };
-  }, [equipmentId, selectedType, q]);
+    }
+
+    loadDocs();
+    return () => { mounted = false; };
+  }, [equipmentId]);
+
+  const filteredDocs = filter === "all" 
+    ? docs 
+    : docs.filter(d => d.type.toLowerCase() === filter.toLowerCase());
+
+  const docTypes = ["all", ...new Set(docs.map(d => d.type.toLowerCase()))];
 
   return (
-    <div className="p-3 space-y-2">
-      <div className="flex gap-2">
-        <select value={selectedType} onChange={e => setSelectedType(e.target.value)}
-          className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm">
-          <option>All</option>
-          {types.map(t => <option key={t}>{t}</option>)}
-        </select>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search titles…"
-          className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm" />
+    <div className="h-full flex flex-col">
+      <div className="p-4 border-b border-neutral-800">
+        <h2 className="text-lg font-semibold mb-3">Documents</h2>
+        
+        {/* Type Filter */}
+        <div className="flex gap-2 overflow-x-auto pb-2">
+          {docTypes.map(type => (
+            <button
+              key={type}
+              onClick={() => setFilter(type)}
+              className={`
+                px-2 py-1 rounded text-sm whitespace-nowrap
+                ${filter === type
+                  ? "bg-blue-600 text-white"
+                  : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+                }
+              `}
+            >
+              {type.charAt(0).toUpperCase() + type.slice(1)}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {loading && <div className="text-xs text-neutral-500">Loading…</div>}
-      {error && <div className="text-xs text-red-400">{error}</div>}
-
-      <div className="space-y-2">
-        {docs.map(d => (
-          <div key={d.id} className="flex items-center justify-between gap-2">
-            <a className="text-sm hover:underline" href={d.url} target="_blank" rel="noreferrer">
-              {d.title || "(Untitled)"}
-            </a>
-            <div className="flex items-center gap-2">
-              {d.type ? <span className="text-[11px] px-1.5 py-0.5 rounded bg-neutral-800">{d.type}</span> : null}
-              {d.createdAt ? <span className="text-[11px] text-neutral-500">{new Date(d.createdAt).toLocaleDateString()}</span> : null}
-            </div>
+      <div className="flex-1 overflow-y-auto p-4">
+        {loading ? (
+          <div className="text-sm text-neutral-400">Loading documents...</div>
+        ) : error ? (
+          <div className="text-sm text-red-400">{error}</div>
+        ) : filteredDocs.length === 0 ? (
+          <div className="text-sm text-neutral-400">
+            {docs.length === 0
+              ? "No documents found"
+              : "No documents match the selected filter"
+            }
           </div>
-        ))}
-        {!loading && !error && docs.length === 0 && (
-          <div className="text-xs text-neutral-500">No documents for this equipment.</div>
+        ) : (
+          <div className="space-y-3">
+            {filteredDocs.map(doc => (
+              <a
+                key={doc.id}
+                href={doc.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block p-3 bg-neutral-800 rounded-lg hover:bg-neutral-700"
+              >
+                <div className="text-sm font-medium">{doc.title}</div>
+                <div className="text-xs text-neutral-400 mt-1">{doc.type}</div>
+              </a>
+            ))}
+          </div>
         )}
       </div>
     </div>
