@@ -1,119 +1,124 @@
 import { NextResponse } from "next/server";
-import Airtable from "airtable";
-import { getTableFields } from "@/lib/airtable-metadata";
+import { airtableCreate } from "@/lib/airtable-rest";
 
-const DEFAULT_PROBLEM = "New troubleshooting session";
+type Body = {
+  // If present, we will use it; otherwise we will create new equipment first
+  equipmentId?: string;
+
+  // Provided when creating new equipment
+  newEquipment?: {
+    name: string;
+    serial?: string;
+    typeId?: string; // link to EquipmentTypes if available
+    note?: string;   // free-form notes / PLC link
+  };
+
+  // Required for the session
+  problem: string;
+};
+
+const TB_EQUIP = process.env.TB_EQUIPMENT_INSTANCES || "EquipmentInstances";
+const TB_EQUIP_TYPES = process.env.TB_EQUIPMENT_TYPES || "EquipmentTypes";
 const TB_SESSIONS = process.env.TB_SESSIONS || "Sessions";
 
-function getAirtableBase() {
-  const API_KEY = process.env.AIRTABLE_API_KEY;
-  const BASE_ID = process.env.AIRTABLE_BASE_ID;
-  if (!API_KEY || !BASE_ID) {
-    throw new Error("Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID");
-  }
-  Airtable.configure({ apiKey: API_KEY });
-  return { base: new Airtable().base(BASE_ID), API_KEY, BASE_ID };
-}
+// Flexible field candidates so we don't break on Airtable schema tweaks
+const NAME_FIELDS = ["Name", "Title", "Equipment Name"];
+const SERIAL_FIELDS = ["Serial", "SerialNumber", "SN"];
+const EQUIPTYPE_LINK_FIELDS = ["EquipmentTypes", "EquipmentType", "Type"];
+const EQUIP_LINK_FIELDS = ["RigEquipment", "Equipment", "EquipmentInstance", "EquipmentInstances"];
+const PROBLEM_FIELDS = ["Problem", "Issue", "Notes", "Summary"];
+const DATE_FIELDS = ["CreatedAt", "Created", "Date", "Timestamp"];
 
-function validRecId(v?: string | null) {
-  return !!v && typeof v === "string" && v.startsWith("rec");
+function pick(firsts: string[], allow: Set<string>, fallback?: string) {
+  for (const k of firsts) if (allow.has(k)) return k;
+  return fallback || firsts[0];
 }
 
 export async function POST(req: Request) {
   try {
-    const { base, API_KEY, BASE_ID } = getAirtableBase();
+    const body = (await req.json()) as Body;
 
-    const body = (await req.json().catch(() => ({}))) as {
-      equipmentId?: string;
-      problem?: string;
-    };
-
-    const equipmentId = (body?.equipmentId || "").trim();
-    if (!validRecId(equipmentId)) {
-      return NextResponse.json(
-        { ok: false, error: "equipmentId must be a valid Airtable record id (starts with rec)" },
-        { status: 400 }
-      );
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ ok: false, error: "invalid body" }, { status: 400 });
+    }
+    if (!body.equipmentId && !body.newEquipment?.name) {
+      return NextResponse.json({ ok: false, error: "equipmentId or newEquipment.name required" }, { status: 400 });
+    }
+    if (!body.problem || body.problem.trim().length < 3) {
+      return NextResponse.json({ ok: false, error: "problem (min 3 chars) required" }, { status: 400 });
     }
 
-    // Problem fallback
-    let problem = (body?.problem || "").trim();
-    if (problem.length < 3) problem = DEFAULT_PROBLEM;
+    // We cannot introspect fields cheaply without metadata permissions,
+    // so we build fields with broad candidates and let Airtable ignore unknowns.
 
-    // Discover available fields on the Sessions table
-    const allow = new Set(await getTableFields(base, TB_SESSIONS));
+    // --- 1) Resolve equipment id (existing or create new)
+    let equipmentId = body.equipmentId;
 
-    // Flexible candidates
-    const LINK_FIELDS = [
-      "Rig",
-      "Equipment",
-      "RigEquipment",
-      "EquipmentInstance",
-      "EquipmentInstances",
-      "Rig Equipment",
-    ];
-    const PROBLEM_FIELDS = ["Problem", "Issue", "Summary", "Title", "Finding", "Finding Title"];
+    if (!equipmentId) {
+      const allowEquip = new Set<string>([
+        ...NAME_FIELDS, ...SERIAL_FIELDS, ...EQUIPTYPE_LINK_FIELDS, ...DATE_FIELDS, "Notes", "PLCLink", "PLC Project Doc Link"
+      ]);
 
-    const firstExisting = (cands: string[]) => cands.find((f) => allow.has(f));
+      const ef: Record<string, any> = {};
+      // Name
+      const nameKey = pick(NAME_FIELDS, allowEquip, "Name");
+      ef[nameKey] = body.newEquipment!.name;
 
-    const linkKey = firstExisting(LINK_FIELDS);
-    if (!linkKey) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "No equipment link field found on Sessions table",
-          debug: { table: TB_SESSIONS, allow: [...allow], tried: LINK_FIELDS },
-        },
-        { status: 500 }
-      );
+      // Serial
+      if (body.newEquipment!.serial) {
+        const snKey = pick(SERIAL_FIELDS, allowEquip, "Serial");
+        ef[snKey] = body.newEquipment!.serial;
+      }
+
+      // Optional type link
+      if (body.newEquipment!.typeId) {
+        const typeKey = pick(EQUIPTYPE_LINK_FIELDS, allowEquip, "EquipmentTypes");
+        ef[typeKey] = [body.newEquipment!.typeId];
+      }
+
+      // Optional note / PLC link
+      if (body.newEquipment!.note) {
+        const noteKey = allowEquip.has("Notes") ? "Notes" : (allowEquip.has("PLCLink") ? "PLCLink" : "Description");
+        ef[noteKey] = body.newEquipment!.note;
+      }
+
+      // Optional created timestamp
+      const dtKey = pick(DATE_FIELDS, allowEquip, "CreatedAt");
+      ef[dtKey] = new Date().toISOString();
+
+      const created = await airtableCreate(TB_EQUIP, ef);
+      equipmentId = created.id;
     }
 
-    const problemKey = firstExisting(PROBLEM_FIELDS);
+    // --- 2) Create session
+    const allowSess = new Set<string>([
+      ...EQUIP_LINK_FIELDS, ...PROBLEM_FIELDS, ...DATE_FIELDS, "Status"
+    ]);
+    const sf: Record<string, any> = {};
 
-    // Build Airtable fields payload
-    const fields: Record<string, any> = {};
-    fields[linkKey] = [{ id: equipmentId }];
-    if (problemKey) fields[problemKey] = problem;
+    const linkKey = pick(EQUIP_LINK_FIELDS, allowSess, "RigEquipment");
+    sf[linkKey] = [equipmentId];
 
-    // REST create (avoids SDK quirks)
-    const url = `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TB_SESSIONS)}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ records: [{ fields }] }),
+    const probKey = pick(PROBLEM_FIELDS, allowSess, "Problem");
+    sf[probKey] = body.problem.trim();
+
+    const dateKey = pick(DATE_FIELDS, allowSess, "CreatedAt");
+    sf[dateKey] = new Date().toISOString();
+
+    // optional status default
+    if (allowSess.has("Status")) sf["Status"] = "Open";
+
+    const session = await airtableCreate(TB_SESSIONS, sf);
+
+    const res = NextResponse.json({
+      ok: true,
+      sessionId: session.id,
+      equipmentId,
+      redirect: `/sessions/${session.id}`,
     });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Airtable create failed",
-          status: res.status,
-          body: text,
-          debug: { table: TB_SESSIONS, fields },
-        },
-        { status: 502 }
-      );
-    }
-
-    const json = (await res.json().catch(() => ({}))) as any;
-    const id = json?.records?.[0]?.id;
-    if (!validRecId(id)) {
-      return NextResponse.json(
-        { ok: false, error: "Create succeeded but no record id returned", debug: json },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ ok: true, id });
+    res.headers.set("x-rt-route", "/api/sessions/create");
+    return res;
   } catch (err: any) {
-    return NextResponse.json(
-      { ok: false, error: err?.message || "Failed to create session" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: err?.message || String(err) }, { status: 500 });
   }
 }
