@@ -1,5 +1,27 @@
 "use client";
 import { useState, useCallback, useEffect, useRef } from "react";
+
+// helper to persist an outgoing message (safe if API missing)
+async function persistOutgoingMessage(sessionId: string, msg: { role: string; text: string; docMeta?: any }) {
+  try {
+    await fetch(`/api/sessions/${sessionId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(msg),
+    });
+  } catch {}
+}
+
+// helper to load messages and hydrate UI if addMessage exists
+async function hydrateMessages(sessionId: string, addMessage?: (m: any) => void) {
+  try {
+    const res = await fetch(`/api/sessions/${sessionId}/messages?limit=50`, { cache: "no-store" });
+    const data = await res.json().catch(() => null);
+    if (data?.ok && Array.isArray(data.items) && addMessage) {
+      data.items.forEach((m: any) => addMessage({ role: m.role || "assistant", text: m.text || "" }));
+    }
+  } catch {}
+}
 import ChatPanel from "./ChatPanel";
 import DocsPanel from "./DocsPanel";
 import ReportComposer from "./ReportComposer";
@@ -57,6 +79,11 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
     loadSession();
   }, [loadSession]);
 
+  // Load and hydrate messages
+  useEffect(() => {
+    if (sessionId) hydrateMessages(sessionId, (m: any) => setMessageCount(prev => prev + 1));
+  }, [sessionId]);
+
   const handleMessageCountChange = useCallback((count: number) => {
     setMessageCount(count);
   }, []);
@@ -84,9 +111,10 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
   const onSend = useCallback(async (text: string) => {
     if (!text?.trim()) return;
 
-    // Add user message
+    // Add user message and persist
     const userMessage = { role: "user", text };
     setMessageCount(prev => prev + 1);
+    await persistOutgoingMessage(sessionId, userMessage);
 
     setShowSuggestions(false);
     setAssistantThinking(true);
