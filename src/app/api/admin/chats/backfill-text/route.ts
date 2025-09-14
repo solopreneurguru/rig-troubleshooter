@@ -66,7 +66,8 @@ export async function POST(req: NextRequest) {
   const chat = await getChatById(chatId);
   const messages = await listMessagesForChat(chatId); // return [{role,text,createdAt}, ...]
 
-  const lines = messages.map(m => `[${new Date(m.createdAt).toISOString()}] ${m.role.toUpperCase()}: ${m.text}`);
+  const lines = messages.map((m: { createdAt: string | number | Date; role: string; text: string }) => 
+    `[${new Date(m.createdAt).toISOString()}] ${m.role.toUpperCase()}: ${m.text}`);
   const text = lines.join("\n");
   await airtablePatch(TB_CHATS, chatId, { [F_CHAT_TEXT]: text.slice(-95_000) });
 

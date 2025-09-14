@@ -132,7 +132,7 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
     scrollToBottom();
 
     try {
-      const r = await fetch("/api/chat/stub-reply", {
+      const resp = await fetch("/api/chat/stub-reply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -141,24 +141,31 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
           text
         })
       });
-      const j = await r.json().catch(() => null);
+      
       // small delay for natural feel
       await new Promise(res => setTimeout(res, 350));
-      if (j?.ok && j.reply) {
-        setMessageCount(prev => prev + 1);
-      } else {
-        setMessageCount(prev => prev + 1);
+      
+      // Append assistant message to chat text (fire-and-forget)
+      try {
+        const data = await resp.json().catch(() => ({}));
+        const assistantText =
+          typeof data === "string" ? data :
+          data?.reply ?? data?.text ?? data?.message ?? "";
+
+        if (sessionId && assistantText) {
+          fetch(`/api/chats/${sessionId}/append-text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ role: "assistant", text: assistantText }),
+          }).catch(() => {});
+        }
+      } catch {
+        // Non-fatal: don't block UI on transcript persistence
       }
+      
+      setMessageCount(prev => prev + 1);
     } catch {
       setMessageCount(prev => prev + 1);
-      // Append assistant message to chat text
-      if (sessionId && j?.reply) {
-        fetch(`/api/chats/${sessionId}/append-text`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role: "assistant", text: j.reply }),
-        }).catch(() => {}); // fire-and-forget
-      }
     } finally {
       setAssistantThinking(false);
       scrollToBottom();
