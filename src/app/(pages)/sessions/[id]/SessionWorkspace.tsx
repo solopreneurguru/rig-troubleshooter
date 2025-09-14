@@ -47,20 +47,25 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
   const [showDocs, setShowDocs] = useState(true);
   const [showReport, setShowReport] = useState(false);
   const [reportDraft, setReportDraft] = useState<any>(null);
-  const [messageCount, setMessageCount] = useState(0);
   const [sessionData, setSessionData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [assistantThinking, setAssistantThinking] = useState(false);
+  const [messages, setMessages] = useState<{ role: "user" | "assistant"; text: string }[]>([]);
+  const [draft, setDraft] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
-  const [input, setInput] = useState<string>("");
-  const [isSending, setIsSending] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
-  const sendingRef = useRef(false);
   
-  // Derived state for send button
-  const attachmentCount = 0; // TODO: integrate with your upload component if needed
-  const canSend = input.trim().length > 0 || attachmentCount > 0;
+  // Initialize from server data once when sessionId changes
+  useEffect(() => {
+    const initial = (sessionData?.messages ?? [])
+      .map((m: any) => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        text: m.text ?? m.content ?? "",
+      }))
+      .filter((m: any) => m.text && m.text.trim().length > 0);
+    setMessages(initial);
+  }, [sessionId]); // IMPORTANT: only sessionId dependency
 
   const scrollToBottom = () => chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
@@ -88,12 +93,10 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
 
   // Load and hydrate messages
   useEffect(() => {
-    if (sessionId) hydrateMessages(sessionId, (m: any) => setMessageCount(prev => prev + 1));
+    if (sessionId) hydrateMessages(sessionId, (m: any) => {
+      setMessages(prev => [...prev, { role: m.role || "assistant", text: m.text || "" }]);
+    });
   }, [sessionId]);
-
-  const handleMessageCountChange = useCallback((count: number) => {
-    setMessageCount(count);
-  }, []);
 
   const handleFinishSession = useCallback(async () => {
     try {
@@ -115,90 +118,74 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
     }
   }, [sessionId]);
 
-  // Helper to either append text or auto-send
-  const insertOrSend = useCallback((snippet: string) => {
-    if (isSending) return; // locked while streaming/sending
-    const trimmed = input.trim();
-    if (trimmed.length === 0) {
-      // empty box: insert + auto-send
-      setInput(snippet);
-      // wait for state flush: schedule send on next tick
-      setTimeout(() => handleSend(snippet), 0);
-    } else {
-      // append into the input without sending
-      setInput(prev => (prev.endsWith(" ") || prev.length === 0) ? prev + snippet : prev + " " + snippet);
-    }
-  }, [input, isSending]);
+  const handleSend = useCallback(async () => {
+    const text = draft.trim();
+    if (!text) return;
 
-  const handleSend = useCallback(async (forcedText?: string) => {
-    const text = (forcedText ?? input).trim();
-    if (!text || isSending || sendingRef.current) return;
-    
-    setIsSending(true);
-    sendingRef.current = true;
-
-    // Add user message and persist
-    const userMessage = { role: "user", text };
-    setMessageCount(prev => prev + 1);
-    await persistOutgoingMessage(sessionId, userMessage);
-
-    // Append user message to chat text
-    if (sessionId) {
-      fetch(`/api/chats/${sessionId}/append-text`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "user", text }),
-      }).catch(() => {}); // fire-and-forget
-    }
-
-    setShowSuggestions(false);
-    setAssistantThinking(true);
-    scrollToBottom();
+    // Optimistic user bubble
+    setMessages(prev => [...prev, { role: "user", text }]);
+    setDraft("");
+    setIsTyping(true);
 
     try {
-      const resp = await fetch("/api/chat/stub-reply", {
+      const r = await fetch(`/api/sessions/${sessionId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          equipmentId: sessionData?.session?.equipment?.id || null,
-          text
-        })
+        body: JSON.stringify({ prompt: text }),
       });
-      
-      // small delay for natural feel
-      await new Promise(res => setTimeout(res, 350));
-      
-      // Append assistant message to chat text (fire-and-forget)
+
+      let replyText = "";
       try {
-        const data = await resp.json().catch(() => ({}));
-        const assistantText =
+        const data = await r.json();
+        // Be defensive about the shape
+        replyText =
           typeof data === "string" ? data :
           data?.reply ?? data?.text ?? data?.message ?? "";
-
-        if (sessionId && assistantText) {
-          fetch(`/api/chats/${sessionId}/append-text`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ role: "assistant", text: assistantText }),
-          }).catch(() => {});
-        }
       } catch {
-        // Non-fatal: don't block UI on transcript persistence
+        // If not JSON (unexpected), read as text
+        replyText = await r.text();
       }
-      
-      setMessageCount(prev => prev + 1);
-      setInput(""); // clear on success
-    } catch {
-      setMessageCount(prev => prev + 1);
-      console.error("send failed");
+      replyText = (replyText || "").toString().trim();
+
+      // Append assistant bubble (even if empty, but show something helpful)
+      setMessages(prev => [
+        ...prev,
+        { role: "assistant", text: replyText || "Hmm, I didn't get a response. Try again?" },
+      ]);
+
+      // (Optional) fire-and-forget transcript append; do not await
+      if (sessionId && replyText) {
+        fetch(`/api/chats/${sessionId}/append-text`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ who: "ASSISTANT", text: replyText }),
+        }).catch(() => {});
+      }
+    } catch (err) {
+      setMessages(prev => [
+        ...prev,
+        { role: "assistant", text: "Network error while sending. Please try again." },
+      ]);
     } finally {
-      setAssistantThinking(false);
-      setIsSending(false);
+      setIsTyping(false);
       scrollToBottom();
-      sendingRef.current = false;
     }
-  }, [sessionId, sessionData?.session?.equipment?.id, input]);
+  }, [sessionId, draft]);
+
+  // Helper to either append text or auto-send
+  const insertOrSend = useCallback((snippet: string) => {
+    if (isTyping) return; // locked while streaming/sending
+    const trimmed = draft.trim();
+    if (trimmed.length === 0) {
+      // empty box: insert + auto-send
+      setDraft(snippet);
+      // wait for state flush: schedule send on next tick
+      setTimeout(() => handleSend(), 0);
+    } else {
+      // append into the input without sending
+      setDraft(prev => (prev.endsWith(" ") || prev.length === 0) ? prev + snippet : prev + " " + snippet);
+    }
+  }, [draft, isTyping, handleSend]);
 
   return (
     <div className="flex h-full">
@@ -217,7 +204,7 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
             </div>
             <button
               onClick={handleFinishSession}
-              disabled={messageCount === 0}
+              disabled={messages.length === 0}
               className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 disabled:opacity-50 text-sm"
             >
               Finish Session
@@ -249,7 +236,6 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
         <div className="flex-1 min-h-0 relative">
           <ChatPanel
             sessionId={sessionId}
-            onMessageCountChange={handleMessageCountChange}
             uploadComponent={
               <UploadFromChat
                 equipmentId={equipmentId}
@@ -262,24 +248,26 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
           />
 
           {/* Input Area */}
-          <div className="absolute bottom-0 left-0 right-0 p-4">
-            <div className="flex gap-2 mb-4">
+          <div className="border-t border-neutral-800 p-4">
+            <form
+              onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+              className="flex gap-2 items-end mb-4"
+            >
               <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Type your message..."
-                className="flex-1 bg-neutral-800 rounded p-2 text-sm resize-none"
-                rows={1}
-                disabled={isSending}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder="Describe what you see, attach steps, or ask a question…"
+                className="w-full resize-y min-h-[44px] rounded bg-neutral-900 px-3 py-2"
+                disabled={isTyping}
               />
               <button
-                onClick={() => handleSend()}
-                disabled={!canSend || isSending}
+                type="submit"
                 className="px-3 py-1.5 bg-emerald-600 text-white rounded hover:bg-emerald-500 disabled:opacity-50 text-sm whitespace-nowrap"
+                disabled={!draft.trim() || isTyping}
               >
-                Send
+                {isTyping ? "Sending…" : "Send"}
               </button>
-            </div>
+            </form>
 
             {/* Quick Actions */}
             {showSuggestions && (
@@ -295,7 +283,7 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
                       key={s}
                       className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:hover:bg-neutral-800"
                       onClick={() => insertOrSend(s)}
-                      disabled={isSending}
+                      disabled={isTyping}
                     >
                       {s}
                     </button>
@@ -303,7 +291,7 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
                   <button
                     className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:hover:bg-neutral-800"
                     onClick={() => {/* open upload flow */}}
-                    disabled={isSending}
+                    disabled={isTyping}
                   >
                     Upload PLC snapshot
                   </button>
@@ -311,7 +299,7 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
               </>
             )}
 
-            {assistantThinking && (
+            {isTyping && (
               <div className="p-2 rounded bg-neutral-900 w-fit text-gray-300">
                 <TypingDots />
               </div>
