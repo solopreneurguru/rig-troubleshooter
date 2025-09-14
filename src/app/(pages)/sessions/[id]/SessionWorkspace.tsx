@@ -28,6 +28,30 @@ import ReportComposer from "./ReportComposer";
 import UploadFromChat from "./UploadFromChat";
 import "./ChatMessageList.css";
 
+const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+async function safeFetchJSON(url: string, init?: RequestInit, attempts = 2, timeoutMs = 15000) {
+  for (let i = 0; i < attempts; i++) {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const r = await fetch(url, { ...init, signal: ctrl.signal });
+      clearTimeout(to);
+      // Surface non-2xx as errors with JSON body if possible
+      const ct = r.headers.get("content-type") || "";
+      const payload = ct.includes("application/json") ? await r.json() : await r.text();
+      if (!r.ok) {
+        throw new Error(typeof payload === "string" ? payload : payload?.error || r.statusText);
+      }
+      return payload;
+    } catch (err) {
+      clearTimeout(to);
+      if (i === attempts - 1) throw err;
+      await sleep(600 * (i + 1)); // simple backoff: 600ms, 1200ms
+    }
+  }
+}
+
 function TypingDots() {
   return (
     <div className="typing">
@@ -50,7 +74,8 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
   const [sessionData, setSessionData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [messages, setMessages] = useState<{ role: "user" | "assistant"; text: string }[]>([]);
+  type Msg = { id: string; role: "user" | "assistant" | "system"; text: string; status?: "sending" | "sent" | "failed" };
+  const [messages, setMessages] = useState<Msg[]>([]);
   const [draft, setDraft] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
@@ -94,7 +119,12 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
   // Load and hydrate messages
   useEffect(() => {
     if (sessionId) hydrateMessages(sessionId, (m: any) => {
-      setMessages(prev => [...prev, { role: m.role || "assistant", text: m.text || "" }]);
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(),
+        role: m.role || "assistant",
+        text: m.text || "",
+        status: "sent"
+      }]);
     });
   }, [sessionId]);
 
@@ -118,59 +148,86 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
     }
   }, [sessionId]);
 
-  const handleSend = useCallback(async () => {
-    const text = draft.trim();
-    if (!text) return;
+  async function actuallySend(text: string, existingId?: string) {
+    const id = existingId || crypto.randomUUID();
 
-    // Optimistic user bubble
-    setMessages(prev => [...prev, { role: "user", text }]);
-    setDraft("");
-    setIsTyping(true);
+    // 1) optimistic user bubble
+    if (!existingId) {
+      setMessages(prev => [...prev, { id, role: "user", text, status: "sending" }]);
+    } else {
+      // when retrying, keep content but set status to sending
+      setMessages(prev => prev.map(m => m.id === id ? { ...m, status: "sending" } : m));
+    }
 
+    // 2) fire the chat request
     try {
-      const r = await fetch(`/api/sessions/${sessionId}/chat`, {
+      setIsTyping(true);
+
+      const payload = await safeFetchJSON(`/api/sessions/${sessionId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: text }),
+        body: JSON.stringify({ message: text }),
       });
 
-      let replyText = "";
-      try {
-        const data = await r.json();
-        // Be defensive about the shape
-        replyText =
-          typeof data === "string" ? data :
-          data?.reply ?? data?.text ?? data?.message ?? "";
-      } catch {
-        // If not JSON (unexpected), read as text
-        replyText = await r.text();
-      }
-      replyText = (replyText || "").toString().trim();
+      // Extract assistant text robustly (string or {reply|text|message})
+      const assistant =
+        typeof payload === "string"
+          ? payload
+          : payload?.reply || payload?.text || payload?.message || "";
 
-      // Append assistant bubble (even if empty, but show something helpful)
-      setMessages(prev => [
-        ...prev,
-        { role: "assistant", text: replyText || "Hmm, I didn't get a response. Try again?" },
-      ]);
+      // Mark user bubble as sent
+      setMessages(prev => prev.map(m => m.id === id ? { ...m, status: "sent" } : m));
 
-      // (Optional) fire-and-forget transcript append; do not await
-      if (sessionId && replyText) {
-        fetch(`/api/chats/${sessionId}/append-text`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ who: "ASSISTANT", text: replyText }),
-        }).catch(() => {});
+      // Append assistant bubble
+      if (assistant) {
+        const aId = crypto.randomUUID();
+        setMessages(prev => [...prev, { id: aId, role: "assistant", text: assistant, status: "sent" }]);
+
+        // (non-blocking) append both sides to Airtable transcript if available
+        try {
+          if (sessionId) {
+            // user line
+            safeFetchJSON(`/api/chats/${sessionId}/append-text`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ lines: [`[USER] ${text}`] }),
+            }).catch(() => {});
+            // assistant line
+            safeFetchJSON(`/api/chats/${sessionId}/append-text`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ lines: [`[ASSISTANT] ${assistant}`] }),
+            }).catch(() => {});
+          }
+        } catch { /* ignore */ }
+      } else {
+        // No assistant text returned — still consider user message sent
+        setMessages(prev => prev.map(m => m.id === id ? { ...m, status: "sent" } : m));
       }
     } catch (err) {
-      setMessages(prev => [
-        ...prev,
-        { role: "assistant", text: "Network error while sending. Please try again." },
-      ]);
+      // 3) error: keep bubble and mark failed
+      setMessages(prev => prev.map(m => m.id === id ? { ...m, status: "failed" } : m));
     } finally {
       setIsTyping(false);
       scrollToBottom();
     }
-  }, [sessionId, draft]);
+  }
+
+  async function resendFailed(id: string) {
+    const item = messages.find(m => m.id === id);
+    if (!item) return;
+    // mark as sending
+    setMessages(prev => prev.map(m => m.id === id ? { ...m, status: "sending" } : m));
+    // attempt the send again using the same text
+    await actuallySend(item.text, id); // pass existing id so we don't duplicate
+  }
+
+  const handleSend = useCallback(() => {
+    const text = draft.trim();
+    if (!text || isTyping) return;
+    setDraft("");
+    actuallySend(text);
+  }, [draft, isTyping]);
 
   // Helper to either append text or auto-send
   const insertOrSend = useCallback((snippet: string) => {
@@ -241,8 +298,18 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
                 No messages yet. Start the conversation.
               </div>
             ) : (
-              messages.map((m, i) => (
-                <ChatBubble key={i} role={m.role} text={m.text} />
+              messages.map((m) => (
+                <ChatBubble
+                  key={m.id}
+                  role={m.role}
+                  text={m.text}
+                  status={m.status}
+                  onRetry={
+                    m.status === "failed" && m.role === "user"
+                      ? () => resendFailed(m.id)
+                      : undefined
+                  }
+                />
               ))
             )}
             {isTyping && (

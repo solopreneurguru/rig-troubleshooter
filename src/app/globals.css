@@ -42,3 +42,8 @@ body {
 *::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Chat send status chips */
+.status { @apply rounded-full px-1.5 py-0.5; }
+.status-muted { @apply text-neutral-300; }
+.status-error { @apply text-red-300; }

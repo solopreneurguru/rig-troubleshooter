@@ -5,9 +5,11 @@ import React from "react";
 type Bubble = {
   role: "user" | "assistant" | "system";
   text: string;
+  status?: "sending" | "sent" | "failed";
+  onRetry?: () => void;
 };
 
-export default function ChatBubble({ role, text }: Bubble) {
+export default function ChatBubble({ role, text, status, onRetry }: Bubble) {
   const isUser = role === "user";
   const isAssistant = role === "assistant";
 
@@ -24,6 +26,28 @@ export default function ChatBubble({ role, text }: Bubble) {
         ].join(" ")}
       >
         <div className="whitespace-pre-wrap">{text}</div>
+
+        {status && (
+          <div className="mt-1 text-[11px] flex items-center gap-2 opacity-80">
+            {status === "sending" && <span className="status status-muted">Sending…</span>}
+            {status === "sent" && <span className="status status-muted">Sent</span>}
+            {status === "failed" && (
+              <>
+                <span className="status status-error">Failed</span>
+                {onRetry && (
+                  <button
+                    type="button"
+                    className="underline underline-offset-2 hover:opacity-80"
+                    onClick={onRetry}
+                    aria-label="Retry send"
+                  >
+                    Retry
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
