@@ -1,9 +1,20 @@
 "use client";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import ChatPanel from "./ChatPanel";
 import DocsPanel from "./DocsPanel";
 import ReportComposer from "./ReportComposer";
 import UploadFromChat from "./UploadFromChat";
+import "./ChatMessageList.css";
+
+function TypingDots() {
+  return (
+    <div className="typing">
+      <span className="dot" />
+      <span className="dot" />
+      <span className="dot" />
+    </div>
+  );
+}
 
 interface Props {
   sessionId: string;
@@ -18,6 +29,13 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
   const [sessionData, setSessionData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [assistantThinking, setAssistantThinking] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(true);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollToBottom = () => chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+
+  useEffect(() => { scrollToBottom(); });
 
   // Load session data for equipment context
   const loadSession = useCallback(async () => {
@@ -62,6 +80,43 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
       alert(e?.message || "Failed to compose report");
     }
   }, [sessionId]);
+
+  const onSend = useCallback(async (text: string) => {
+    if (!text?.trim()) return;
+
+    // Add user message
+    const userMessage = { role: "user", text };
+    setMessageCount(prev => prev + 1);
+
+    setShowSuggestions(false);
+    setAssistantThinking(true);
+    scrollToBottom();
+
+    try {
+      const r = await fetch("/api/chat/stub-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          equipmentId: sessionData?.session?.equipment?.id || null,
+          text
+        })
+      });
+      const j = await r.json().catch(() => null);
+      // small delay for natural feel
+      await new Promise(res => setTimeout(res, 350));
+      if (j?.ok && j.reply) {
+        setMessageCount(prev => prev + 1);
+      } else {
+        setMessageCount(prev => prev + 1);
+      }
+    } catch {
+      setMessageCount(prev => prev + 1);
+    } finally {
+      setAssistantThinking(false);
+      scrollToBottom();
+    }
+  }, [sessionId, sessionData?.session?.equipment?.id]);
 
   return (
     <div className="flex h-full">
@@ -109,7 +164,7 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
         </div>
 
         {/* Chat Panel */}
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0 relative">
           <ChatPanel
             sessionId={sessionId}
             onMessageCountChange={handleMessageCountChange}
@@ -123,6 +178,36 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
               />
             }
           />
+
+          {/* Suggestions and Typing Indicator */}
+          <div className="absolute bottom-0 left-0 right-0 p-4">
+            {showSuggestions && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {[
+                  "Check current mode",
+                  "Read commanded vs actual RPM",
+                  "List recent parameter changes",
+                  "Upload PLC snapshot"
+                ].map((s) => (
+                  <button
+                    key={s}
+                    className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700"
+                    onClick={() => onSend(s)}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {assistantThinking && (
+              <div className="p-2 rounded bg-neutral-900 w-fit text-gray-300">
+                <TypingDots />
+              </div>
+            )}
+
+            <div ref={chatEndRef} />
+          </div>
         </div>
 
         {/* Report Composer (shown after Finish clicked) */}
