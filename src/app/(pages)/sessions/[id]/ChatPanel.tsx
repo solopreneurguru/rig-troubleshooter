@@ -52,6 +52,23 @@ export default function ChatPanel({ sessionId, onMessageCountChange, uploadCompo
       if (!r.ok || !j?.ok) throw new Error(j?.error || `HTTP ${r.status}`);
       setText("");
       await load();
+
+      // Get stub reply
+      const replyRes = await fetch("/api/chat/stub-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, text }),
+      });
+      const replyData = await replyRes.json().catch(() => ({}));
+      if (replyData?.ok && replyData.reply) {
+        // Send assistant reply
+        await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, role: "assistant", text: replyData.reply }),
+        });
+        await load();
+      }
     } catch (e: any) {
       setErr(e?.message || "Failed to send");
     } finally {

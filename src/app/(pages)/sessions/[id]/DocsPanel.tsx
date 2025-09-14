@@ -26,16 +26,29 @@ export default function DocsPanel({ sessionId, equipmentId }: Props) {
         setLoading(true);
         setError(null);
 
-        const res = await fetch(`/api/documents/by-equipment/${equipmentId || "none"}`);
-        const data = await res.json();
+        if (!equipmentId) {
+          setDocs([]);
+          return;
+        }
+
+        const res = await fetch(`/api/documents/by-equipment?rec=${encodeURIComponent(equipmentId)}&limit=25`);
+        const ctype = res.headers.get("content-type") || "";
+        let data: any;
+
+        if (ctype.includes("application/json")) {
+          data = await res.json();
+        } else {
+          const text = await res.text();
+          throw new Error(`Non-JSON response (${res.status}): ${text.slice(0, 160)}`);
+        }
 
         if (!mounted) return;
 
-        if (!res.ok || !data?.ok) {
+        if (!data?.ok) {
           throw new Error(data?.error || "Failed to load documents");
         }
 
-        setDocs(data.documents || []);
+        setDocs(data.items || []);
       } catch (e: any) {
         if (!mounted) return;
         setError(e?.message || "Failed to load documents");
@@ -83,7 +96,9 @@ export default function DocsPanel({ sessionId, equipmentId }: Props) {
         {loading ? (
           <div className="text-sm text-neutral-400">Loading documents...</div>
         ) : error ? (
-          <div className="text-sm text-red-400">{error}</div>
+          <div className="text-xs text-red-400 p-2 bg-red-950/30 rounded">
+            Couldn't load documents. {String(error)}
+          </div>
         ) : filteredDocs.length === 0 ? (
           <div className="text-sm text-neutral-400">
             {docs.length === 0
