@@ -1,3 +1,4 @@
+// src/app/api/sessions/create/route.ts
 import { NextResponse } from "next/server";
 import { airtableCreate } from "@/lib/airtable-rest";
 
@@ -15,7 +16,7 @@ type Body = {
 const TB_EQUIP = process.env.TB_EQUIPMENT_INSTANCES || "EquipmentInstances";
 const TB_SESSIONS = process.env.TB_SESSIONS || "Sessions";
 
-// Order matters: put your most-likely field names first
+// Try these link-field names (order matters; put your most-likely first)
 const EQUIP_LINK_CANDIDATES = [
   "RigEquipment",
   "Equipment",
@@ -24,21 +25,22 @@ const EQUIP_LINK_CANDIDATES = [
   "Rig",
 ];
 
+// fields we are OK to write for equipment/session
+// (intentionally NO CreatedAt/Created time or any computed fields)
 const NAME_FIELDS = ["Name", "Title", "Equipment Name"];
 const SERIAL_FIELDS = ["Serial", "SerialNumber", "SN"];
-const DATE_FIELDS = ["CreatedAt", "Created", "Date", "Timestamp"];
 const PROBLEM_FIELDS = ["Problem", "Issue", "Notes", "Summary"];
 
 function firstOf(cands: string[], fallback: string) {
   return (allow?: Set<string>) => {
-    if (allow) for (const k of cands) if (allow.has(k)) return k;
-    // without schema, just use first as best-guess
+    if (allow) {
+      for (const k of cands) if (allow.has(k)) return k;
+    }
     return cands[0] || fallback;
   };
 }
 const pickName = firstOf(NAME_FIELDS, "Name");
 const pickSerial = firstOf(SERIAL_FIELDS, "Serial");
-const pickDate = firstOf(DATE_FIELDS, "CreatedAt");
 const pickProblem = firstOf(PROBLEM_FIELDS, "Problem");
 
 function isUnknownFieldError(e: any) {
@@ -50,11 +52,12 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Body;
 
+    // Basic validation
     if (!body?.problem || body.problem.trim().length < 3) {
       return NextResponse.json({ ok: false, error: "problem (min 3 chars) required" }, { status: 400 });
     }
 
-    // 1) Resolve equipment id (use provided or create)
+    // 1) Resolve equipment id: use provided, else create new (REST)
     let equipmentId = body.equipmentId;
     if (!equipmentId) {
       if (!body.newEquipment?.name || body.newEquipment.name.trim().length < 3) {
@@ -63,45 +66,47 @@ export async function POST(req: Request) {
       const ef: Record<string, any> = {};
       ef[pickName()] = body.newEquipment.name.trim();
       if (body.newEquipment.serial) ef[pickSerial()] = body.newEquipment.serial;
-      // Optional details
-      ef[pickDate()] = new Date().toISOString();
 
+      // IMPORTANT: DO NOT send CreatedAt or any computed/auto fields.
       const createdEquip = await airtableCreate(TB_EQUIP, ef);
       equipmentId = createdEquip.id;
     }
 
-    // 2) Try to create session with equipment link using candidates
-    const baseFields = {
+    // 2) Try to create session and link equipment using candidate link-field names
+    const baseFields: Record<string, any> = {
       [pickProblem()]: body.problem.trim(),
-      [pickDate()]: new Date().toISOString(),
+      // No CreatedAt here either; Airtable will set created time itself
     };
 
     let lastErr: any = null;
     for (const linkKey of EQUIP_LINK_CANDIDATES) {
-      const fields = { ...baseFields, [linkKey]: [equipmentId] };
       try {
+        const fields = { ...baseFields, [linkKey]: [equipmentId] };
         const session = await airtableCreate(TB_SESSIONS, fields);
-        const res = NextResponse.json({ ok: true, sessionId: session.id, equipmentId, linked: true, linkKey });
+        const res = NextResponse.json({
+          ok: true,
+          sessionId: session.id,
+          equipmentId,
+          linked: true,
+          linkKey,
+        });
         res.headers.set("x-rt-route", "/api/sessions/create");
         return res;
       } catch (e: any) {
         lastErr = e;
-        if (!isUnknownFieldError(e)) {
-          // Different error -> bubble it up immediately
-          throw e;
-        }
-        // else try next candidate
+        if (!isUnknownFieldError(e)) throw e; // only ignore unknown-field; anything else bubble up
       }
     }
 
-    // 3) If all candidates failed due to unknown field, create the session without the link
+    // 3) If no candidate link field exists, create session without link and return a hint
     const minimal = await airtableCreate(TB_SESSIONS, baseFields);
     return NextResponse.json({
       ok: true,
       sessionId: minimal.id,
       equipmentId,
       linked: false,
-      hint: "No equipment link field found on Sessions table. Please add a link-to-EquipmentInstances field.",
+      hint:
+        "No equipment link field found on Sessions table. Add a link-to-EquipmentInstances field (e.g., RigEquipment/Equipment).",
       tried: EQUIP_LINK_CANDIDATES,
       lastError: String(lastErr?.message || lastErr),
     });
