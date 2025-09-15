@@ -195,11 +195,20 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
           equipmentName: sessionData?.session?.equipment?.name
         }),
       });
-      let reply = "";
-      if (r.ok) {
-        const j: any = await r.json();
-        reply = j?.reply || j?.text || j?.message || "";
+      
+      const j = await r.json().catch(() => null);
+      if (!r.ok) {
+        const msg = j?.error ?? `HTTP ${r.status}`;
+        addLocalMessage({
+          role: "assistant",
+          text: `Error: ${msg}`,
+          status: "failed",
+          canRetry: true
+        });
+        return;
       }
+
+      const reply = j?.reply || j?.text || j?.message || "";
       const assistantText = reply?.trim() ||
         "Got it. Share any readings, alarms, or recent changes and we'll dig in.";
       addLocalMessage({ role: "assistant", text: assistantText, status: "sent" });

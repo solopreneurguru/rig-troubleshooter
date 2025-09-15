@@ -1,5 +1,7 @@
 import { NextResponse, NextRequest } from "next/server";
 import OpenAI from "openai";
+import { env, requireEnv } from "@/lib/env";
+import { logServer } from "@/lib/logger";
 
 type Params = { id: string };
 export const runtime = "nodejs"; // important for OpenAI SDK
@@ -9,6 +11,14 @@ export async function POST(
   ctx: { params: Promise<Params> }
 ) {
   const { id } = await ctx.params;
+
+  logServer("api_start", {
+    route: "sessions/[id]/chat",
+    vercelEnv: env.VERCEL_ENV,
+    commit: env.VERCEL_GIT_COMMIT_SHA,
+    hasOpenAI: !!env.OPENAI_API_KEY,
+    hasAirtable: !!env.AIRTABLE_KEY
+  });
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -20,10 +30,9 @@ export async function POST(
         { status: 400 }
       );
     }
-    if (!process.env.OPENAI_API_KEY) {
-      console.error("POST /api/sessions/[id]/chat failed: Missing OPENAI_API_KEY");
-      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
-    }
+
+    // Require OpenAI key
+    requireEnv("OPENAI_API_KEY");
 
     const sys = [
       "You are Rig Troubleshooter, a calm, stepwise industrial support assistant.",
@@ -32,7 +41,7 @@ export async function POST(
       equipmentName ? `Equipment: ${equipmentName}` : "",
     ].filter(Boolean).join("\n");
 
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+    const client = new OpenAI({ apiKey: requireEnv("OPENAI_API_KEY") });
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.2,
@@ -48,9 +57,12 @@ export async function POST(
 
     return NextResponse.json({ ok: true, reply });
   } catch (err: any) {
-    console.error("POST /api/sessions/[id]/chat failed:", err);
+    logServer("api_error", {
+      route: "sessions/[id]/chat",
+      err: String(err?.message ?? err)
+    });
     return NextResponse.json(
-      { error: String(err?.message ?? err) },
+      { ok: false, error: String(err?.message ?? err), cause: "internal" },
       { status: 500 }
     );
   }
