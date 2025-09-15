@@ -102,9 +102,6 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
     setMessages(initial);
   }, [sessionId]); // IMPORTANT: only sessionId dependency
 
-  const scrollToEnd = () => chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-
-  useEffect(() => { scrollToEnd(); });
 
   // Load session data for equipment context
   const loadSession = useCallback(async () => {
