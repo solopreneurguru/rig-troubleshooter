@@ -4,12 +4,14 @@ import { airtableGet, airtablePatch, TB_CHATS, F_CHAT_TEXT } from "@/lib/airtabl
 type Role = "user" | "assistant" | "system";
 export const runtime = "nodejs";
 
+type Params = { id: string };
+
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  ctx: { params: Promise<Params> }
 ) {
   try {
-    const chatId = params.id;
+    const { id: chatId } = await ctx.params;
     const body = await req.json().catch(() => ({}));
     const { text, append, role, prefix, suffix } = body ?? {};
 

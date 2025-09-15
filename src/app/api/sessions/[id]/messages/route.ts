@@ -41,11 +41,13 @@ async function airtableFetch(path: string, init?: RequestInit) {
 }
 
 // GET /api/sessions/[id]/messages?limit=50
-export async function GET(req: Request, ctx: any) {
+type Params = { id: string };
+
+export async function GET(req: Request, ctx: { params: Promise<Params> }) {
   if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
     return NextResponse.json({ ok: false, error: "Missing Airtable env" }, { status: 500 });
   }
-  const sessionId = (ctx?.params?.id ?? "").toString();
+  const { id: sessionId } = await ctx.params;
   if (!validRecId(sessionId)) {
     return NextResponse.json({ ok: false, error: "Invalid session id" }, { status: 400 });
   }
@@ -99,11 +101,11 @@ export async function GET(req: Request, ctx: any) {
 
 // POST /api/sessions/[id]/messages
 // body: { role: "user" | "assistant", text: string, docMeta?: {id?: string, title?: string, type?: string} }
-export async function POST(req: Request, ctx: any) {
+export async function POST(req: Request, ctx: { params: Promise<Params> }) {
   if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
     return NextResponse.json({ ok: false, error: "Missing Airtable env" }, { status: 500 });
   }
-  const sessionId = (ctx?.params?.id ?? "").toString();
+  const { id: sessionId } = await ctx.params;
   if (!validRecId(sessionId)) {
     return NextResponse.json({ ok: false, error: "Invalid session id" }, { status: 400 });
   }
