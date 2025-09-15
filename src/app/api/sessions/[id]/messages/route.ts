@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTableFields } from "@/lib/airtable-metadata";
 import { withDeadline } from "@/lib/withDeadline";
 
-type Params = { id: string };
-
 const AIRTABLE_REST_KEY = process.env.AIRTABLE_REST_KEY!;
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID!;
 const TB_CHATS = process.env.AIRTABLE_TABLE_CHATS || "Chats";
@@ -35,7 +33,7 @@ async function airtableFetch(path: string, init?: RequestInit) {
   return withDeadline(fetch(url, {
     ...init,
     headers: {
-      Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+      Authorization: `Bearer ${AIRTABLE_REST_KEY}`,
       "Content-Type": "application/json",
       ...(init?.headers || {}),
     },
@@ -73,9 +71,9 @@ export async function GET(
   const docTypeKey = [...DOC_TYPE_FIELDS].find(f => fields.has(f));
 
   // formula tries the link field first; fall back to text equality if SessionId exists as text
-  let formula = `FIND("${esc(sessionId)}", ARRAYJOIN({${linkKey}}))`;
+  let formula = `FIND("${esc(id)}", ARRAYJOIN({${linkKey}}))`;
   if (!fields.has(linkKey) && fields.has("SessionId")) {
-    formula = `{SessionId} = "${esc(sessionId)}"`;
+    formula = `{SessionId} = "${esc(id)}"`;
   }
 
   const q = new URLSearchParams();
@@ -154,8 +152,8 @@ export async function POST(
   else f["Text"] = body.text;
 
   if (roleKey) f[roleKey] = body.role || "user";
-  if (linkKey && validRecId(sessionId)) f[linkKey] = [{ id: sessionId }];
-  else f["SessionId"] = sessionId; // fallback as plain text if no link field exists
+  if (linkKey && validRecId(id)) f[linkKey] = [{ id }];
+  else f["SessionId"] = id; // fallback as plain text if no link field exists
 
   if (body.docMeta && docIdKey) f[docIdKey] = body.docMeta.id || null;
   if (body.docMeta && docTitleKey) f[docTitleKey] = body.docMeta.title || null;
