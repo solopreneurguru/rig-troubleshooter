@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
-import { getTableFields } from "@/lib/airtable-metadata"; // already in repo
+import { NextRequest, NextResponse } from "next/server";
+import { getTableFields } from "@/lib/airtable-metadata";
 import { withDeadline } from "@/lib/withDeadline";
 
-const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY!;
+type Params = { id: string };
+
+const AIRTABLE_REST_KEY = process.env.AIRTABLE_REST_KEY!;
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID!;
 const TB_CHATS = process.env.AIRTABLE_TABLE_CHATS || "Chats";
 
@@ -43,16 +45,23 @@ async function airtableFetch(path: string, init?: RequestInit) {
 // GET /api/sessions/[id]/messages?limit=50
 type Params = { id: string };
 
-export async function GET(req: Request, ctx: { params: Promise<Params> }) {
-  if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
-    return NextResponse.json({ ok: false, error: "Missing Airtable env" }, { status: 500 });
-  }
-  const { id: sessionId } = await ctx.params;
-  if (!validRecId(sessionId)) {
-    return NextResponse.json({ ok: false, error: "Invalid session id" }, { status: 400 });
-  }
-  const { searchParams } = new URL(req.url);
-  const limit = Math.max(1, Math.min(100, Number(searchParams.get("limit")) || 50));
+export async function GET(
+  req: NextRequest,
+  ctx: { params: Promise<Params> }
+) {
+  try {
+    const { id } = await ctx.params;
+    
+    if (!AIRTABLE_REST_KEY || !AIRTABLE_BASE_ID) {
+      console.error("GET /api/sessions/[id]/messages failed: Missing Airtable env");
+      return NextResponse.json({ error: "Missing Airtable env" }, { status: 500 });
+    }
+    if (!validRecId(id)) {
+      return NextResponse.json({ error: "Invalid session id" }, { status: 400 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const limit = Math.max(1, Math.min(100, Number(searchParams.get("limit")) || 50));
 
   const schema = await getSchema();
   const fields = new Set(Object.keys((schema as any)?.fields || {}));
@@ -96,23 +105,40 @@ export async function GET(req: Request, ctx: { params: Promise<Params> }) {
     };
   });
 
-  return NextResponse.json({ ok: true, items });
+    return NextResponse.json({ ok: true, items });
+  } catch (err: any) {
+    console.error("GET /api/sessions/[id]/messages failed:", err);
+    return NextResponse.json(
+      { error: String(err?.message ?? err) },
+      { status: 500 }
+    );
+  }
 }
 
 // POST /api/sessions/[id]/messages
 // body: { role: "user" | "assistant", text: string, docMeta?: {id?: string, title?: string, type?: string} }
-export async function POST(req: Request, ctx: { params: Promise<Params> }) {
-  if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
-    return NextResponse.json({ ok: false, error: "Missing Airtable env" }, { status: 500 });
-  }
-  const { id: sessionId } = await ctx.params;
-  if (!validRecId(sessionId)) {
-    return NextResponse.json({ ok: false, error: "Invalid session id" }, { status: 400 });
-  }
-  const body = await req.json().catch(() => null);
-  if (!body || typeof body.text !== "string") {
-    return NextResponse.json({ ok: false, error: "text required" }, { status: 400 });
-  }
+export async function POST(
+  req: NextRequest,
+  ctx: { params: Promise<Params> }
+) {
+  try {
+    const { id } = await ctx.params;
+
+    if (!AIRTABLE_REST_KEY || !AIRTABLE_BASE_ID) {
+      console.error("POST /api/sessions/[id]/messages failed: Missing Airtable env");
+      return NextResponse.json({ error: "Missing Airtable env" }, { status: 500 });
+    }
+    if (!validRecId(id)) {
+      return NextResponse.json({ error: "Invalid session id" }, { status: 400 });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    if (!body?.text?.trim() || typeof body.text !== "string") {
+      return NextResponse.json(
+        { error: "Missing text. Send { text: string }." },
+        { status: 400 }
+      );
+    }
 
   const schema = await getSchema();
   const fields = new Set(Object.keys((schema as any)?.fields || {}));
@@ -148,6 +174,13 @@ export async function POST(req: Request, ctx: { params: Promise<Params> }) {
     return NextResponse.json({ ok: false, error: "Airtable create failed", status: res.status, body: json }, { status: 502 });
   }
 
-  const recId = json?.records?.[0]?.id;
-  return NextResponse.json({ ok: true, id: recId || null });
+    const recId = json?.records?.[0]?.id;
+    return NextResponse.json({ ok: true, id: recId || null });
+  } catch (err: any) {
+    console.error("POST /api/sessions/[id]/messages failed:", err);
+    return NextResponse.json(
+      { error: String(err?.message ?? err) },
+      { status: 500 }
+    );
+  }
 }

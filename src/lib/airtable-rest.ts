@@ -2,9 +2,9 @@ export const TB_CHATS = "Chats";
 export const F_CHAT_TEXT = "Text";
 
 export async function airtableGet(table: string, id: string) {
-  const API_KEY = process.env.AIRTABLE_API_KEY;
+  const API_KEY = process.env.AIRTABLE_REST_KEY;
   const BASE_ID = process.env.AIRTABLE_BASE_ID;
-  if (!API_KEY || !BASE_ID) throw new Error("Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID");
+  if (!API_KEY || !BASE_ID) throw new Error("Missing AIRTABLE_REST_KEY or AIRTABLE_BASE_ID");
 
   const url = `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(table)}/${id}?fields[]=${F_CHAT_TEXT}`;
   const res = await fetch(url, {
@@ -28,9 +28,9 @@ export async function airtableCreate(
   fields: Record<string, any>,
   opts?: { returnRaw?: boolean }
 ): Promise<{ id: string; raw?: any }> {
-  const API_KEY = process.env.AIRTABLE_API_KEY;
+  const API_KEY = process.env.AIRTABLE_REST_KEY;
   const BASE_ID = process.env.AIRTABLE_BASE_ID;
-  if (!API_KEY || !BASE_ID) throw new Error("Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID");
+  if (!API_KEY || !BASE_ID) throw new Error("Missing AIRTABLE_REST_KEY or AIRTABLE_BASE_ID");
 
   const url = `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(tableName)}`;
   const res = await fetch(url, {
@@ -59,9 +59,9 @@ export async function airtablePatch(
   fields: Record<string, any>,
   opts?: { returnRaw?: boolean }
 ): Promise<{ id: string; raw?: any }> {
-  const API_KEY = process.env.AIRTABLE_API_KEY;
+  const API_KEY = process.env.AIRTABLE_REST_KEY;
   const BASE_ID = process.env.AIRTABLE_BASE_ID;
-  if (!API_KEY || !BASE_ID) throw new Error("Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID");
+  if (!API_KEY || !BASE_ID) throw new Error("Missing AIRTABLE_REST_KEY or AIRTABLE_BASE_ID");
 
   const url = `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(tableName)}`;
   const res = await fetch(url, {

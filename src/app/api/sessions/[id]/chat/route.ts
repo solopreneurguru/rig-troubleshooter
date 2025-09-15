@@ -1,19 +1,28 @@
 import { NextResponse, NextRequest } from "next/server";
 import OpenAI from "openai";
-export const runtime = "edge";
+
+type Params = { id: string };
+export const runtime = "nodejs"; // important for OpenAI SDK
 
 export async function POST(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  ctx: { params: Promise<Params> }
 ) {
-  const { id } = await context.params;
+  const { id } = await ctx.params;
+
   try {
-    const { text, rigName, equipmentName } = await req.json();
-    if (!text || typeof text !== "string") {
-      return NextResponse.json({ ok: false, error: "Missing text" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const { text, rigName, equipmentName } = body;
+    
+    if (!text?.trim() || typeof text !== "string") {
+      return NextResponse.json(
+        { error: "Missing text. Send { text: string }." },
+        { status: 400 }
+      );
     }
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ ok: false, error: "Missing OPENAI_API_KEY" }, { status: 500 });
+      console.error("POST /api/sessions/[id]/chat failed: Missing OPENAI_API_KEY");
+      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
     }
 
     const sys = [
@@ -39,6 +48,10 @@ export async function POST(
 
     return NextResponse.json({ ok: true, reply });
   } catch (err: any) {
-    return NextResponse.json({ ok: false, error: err?.message || "Chat error" }, { status: 500 });
+    console.error("POST /api/sessions/[id]/chat failed:", err);
+    return NextResponse.json(
+      { error: String(err?.message ?? err) },
+      { status: 500 }
+    );
   }
 }
