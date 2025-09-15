@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { airtableGet, airtablePatch, TB_CHATS, F_CHAT_TEXT } from "@/lib/airtable-rest";
+import { airtableGet, airtablePatch, F_CHAT_TEXT } from "@/lib/airtable-rest";
+import { TB_CHATS } from "@/lib/env";
 import { getId, type IdContext } from "@/lib/route-ctx";
 
 type Role = "user" | "assistant" | "system";

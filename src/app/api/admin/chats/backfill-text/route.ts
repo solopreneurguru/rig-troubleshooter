@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { airtablePatch, TB_CHATS, F_CHAT_TEXT } from "@/lib/airtable-rest";
+import { airtablePatch, F_CHAT_TEXT } from "@/lib/airtable-rest";
+import { TB_CHATS } from "@/lib/env";
 
 // Helper to list messages for a chat using REST
 async function listMessagesForChat(chatId: string) {

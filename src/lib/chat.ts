@@ -4,7 +4,7 @@ import { setIfExists } from "./airtable-metadata";
 
 const API_KEY = process.env.AIRTABLE_API_KEY!;
 const BASE_ID = process.env.AIRTABLE_BASE_ID!;
-const TB_CHATS = process.env.TB_CHATS!;
+import { TB_CHATS } from "./env";
 const TB_MESSAGES = process.env.TB_MESSAGES!;
 
 function getBase() {
@@ -36,7 +36,6 @@ async function firstPageWithDeadline(sel: any, ms = 8000) {
 }
 
 export async function ensureChatForSession(sessionId: string) {
-  if (!TB_CHATS) throw new Error("Missing TB_CHATS");
   const base = getBase();
   const chats = base(TB_CHATS);
 

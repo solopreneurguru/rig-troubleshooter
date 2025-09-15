@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { env, requireEnv } from "@/lib/env";
+import { requireEnv } from "@/lib/env";
 import { logServer } from "@/lib/logger";
 import { getId, type IdContext } from "@/lib/route-ctx";
 
@@ -16,10 +16,10 @@ export async function POST(
 
   logServer("api_start", {
     route: "sessions/[id]/chat",
-    vercelEnv: env.VERCEL_ENV,
-    commit: env.VERCEL_GIT_COMMIT_SHA,
-    hasOpenAI: !!env.OPENAI_API_KEY,
-    hasAirtable: !!env.AIRTABLE_KEY
+    vercelEnv: process.env.VERCEL_ENV,
+    commit: process.env.VERCEL_GIT_COMMIT_SHA,
+    hasOpenAI: !!process.env.OPENAI_API_KEY,
+    hasAirtable: !!process.env.AIRTABLE_KEY
   });
 
   try {

@@ -1,19 +1,34 @@
 // src/lib/env.ts
-export const env = process.env;
 
-export function requireEnv(name: string, aliases: string[] = []): string {
-  const val =
-    env[name] ??
-    (aliases.length ? aliases.map(a => env[a]).find(Boolean) : undefined);
-  if (!val) {
-    const also = aliases.length ? ` (aliases: ${aliases.join(", ")})` : "";
-    throw new Error(`Missing env: ${name}${also}`);
+export function requireEnv(
+  names: string[] | string,
+  opts?: { fallback?: string; nameForError?: string }
+) {
+  const arr = Array.isArray(names) ? names : [names];
+  for (const n of arr) {
+    const v = process.env[n];
+    if (v && v.trim()) return v.trim();
   }
-  return val;
+  if (opts?.fallback !== undefined) return opts.fallback;
+  const label = opts?.nameForError || arr.join(" | ");
+  throw new Error(`Missing required env: ${label}`);
 }
 
-// Common env vars with aliases
-export const AIRTABLE_KEY = requireEnv("AIRTABLE_KEY", ["AIRTABLE_REST_KEY", "AIRTABLE_API_KEY"]);
+// Aliases for Airtable key (REST or SDK)
+export const AIRTABLE_KEY = requireEnv(
+  ["AIRTABLE_REST_KEY", "AIRTABLE_API_KEY", "AIRTABLE_KEY"],
+  { nameForError: "AIRTABLE_REST_KEY|AIRTABLE_API_KEY|AIRTABLE_KEY" }
+);
+
 export const AIRTABLE_BASE_ID = requireEnv("AIRTABLE_BASE_ID");
-export const TB_CHATS = requireEnv("TB_CHATS", ["TB_MESSAGES"]);
-export const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
+
+// Table name aliases / fallbacks (do not throw; allow default)
+export const TB_CHATS =
+  process.env.TB_CHATS || process.env.TB_MESSAGES || "Chats";
+
+export const TB_MESSAGES =
+  process.env.TB_MESSAGES || process.env.TB_CHATS || "Messages";
+
+// You can add more shared names here as needed:
+export const TB_SESSIONS =
+  process.env.TB_SESSIONS || process.env.SESSIONS || "Sessions";

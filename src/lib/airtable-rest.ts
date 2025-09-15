@@ -1,6 +1,5 @@
 import { env, requireEnv } from "./env";
 
-export const TB_CHATS = "Chats";
 export const F_CHAT_TEXT = "Text";
 
 export async function airtableGet(table: string, id: string) {

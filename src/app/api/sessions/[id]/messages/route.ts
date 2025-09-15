@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { getTableFields } from "@/lib/airtable-metadata";
 import { withDeadline } from "@/lib/withDeadline";
-import { requireEnv } from "@/lib/env";
+import { requireEnv, TB_CHATS } from "@/lib/env";
 import { logServer } from "@/lib/logger";
 import { getId, type IdContext } from "@/lib/route-ctx";
 
