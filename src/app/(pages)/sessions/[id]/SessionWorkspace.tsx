@@ -155,66 +155,53 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
     }
   }, [sessionId]);
 
-  async function actuallySend(text: string, existingId?: string) {
-    const id = existingId || crypto.randomUUID();
+  const addLocalMessage = useCallback((msg: { role: "user" | "assistant"; text: string; status: string; canRetry?: boolean }) => {
+    setMessages(prev => [...prev, { ...msg, id: crypto.randomUUID() }]);
+  }, []);
 
-    // 1) optimistic user bubble
-    if (!existingId) {
-      setMessages(prev => [...prev, { id, role: "user", text, status: "sending" }]);
-    } else {
-      // when retrying, keep content but set status to sending
-      setMessages(prev => prev.map(m => m.id === id ? { ...m, status: "sending" } : m));
-    }
+  async function actuallySend(text: string) {
+    const userText = text.trim();
+    if (!userText || sendingRef.current) return;
+    sendingRef.current = true;
+    setIsTyping(true);
+    addLocalMessage({ role: "user", text: userText, status: "sent" });
+    // fire-and-forget append for user
+    if (sessionId) fetch(`/api/chats/${sessionId}/append-text`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ who: "USER", text: userText })
+    }).catch(()=>{});
+    setDraft("");
 
-    // 2) fire the chat request
     try {
-      setIsTyping(true);
-
-      const payload = await safeFetchJSON(`/api/sessions/${sessionId}/chat`, {
+      const r = await fetch(`/api/sessions/${sessionId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ 
+          text: userText,
+          rigName: sessionData?.session?.rig?.name,
+          equipmentName: sessionData?.session?.equipment?.name
+        }),
       });
-
-      // Extract assistant text robustly (string or {reply|text|message})
-      const assistant =
-        typeof payload === "string"
-          ? payload
-          : payload?.reply || payload?.text || payload?.message || "";
-
-      // Mark user bubble as sent
-      setMessages(prev => prev.map(m => m.id === id ? { ...m, status: "sent" } : m));
-
-      // Append assistant bubble
-      if (assistant) {
-        const aId = crypto.randomUUID();
-        setMessages(prev => [...prev, { id: aId, role: "assistant", text: assistant, status: "sent" }]);
-
-        // (non-blocking) append both sides to Airtable transcript if available
-        try {
-          if (sessionId) {
-            // user line
-            safeFetchJSON(`/api/chats/${sessionId}/append-text`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ lines: [`[USER] ${text}`] }),
-            }).catch(() => {});
-            // assistant line
-            safeFetchJSON(`/api/chats/${sessionId}/append-text`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ lines: [`[ASSISTANT] ${assistant}`] }),
-            }).catch(() => {});
-          }
-        } catch { /* ignore */ }
-      } else {
-        // No assistant text returned — still consider user message sent
-        setMessages(prev => prev.map(m => m.id === id ? { ...m, status: "sent" } : m));
+      let reply = "";
+      if (r.ok) {
+        const j: any = await r.json();
+        reply = j?.reply || j?.text || j?.message || "";
       }
-    } catch (err) {
-      // 3) error: keep bubble and mark failed
-      setMessages(prev => prev.map(m => m.id === id ? { ...m, status: "failed" } : m));
+      const assistantText = reply?.trim() ||
+        "Got it. Share any readings, alarms, or recent changes and we'll dig in.";
+      addLocalMessage({ role: "assistant", text: assistantText, status: "sent" });
+      if (sessionId) fetch(`/api/chats/${sessionId}/append-text`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ who: "ASSISTANT", text: assistantText })
+      }).catch(()=>{});
+    } catch {
+      addLocalMessage({
+        role: "assistant",
+        text: "Network hiccup contacting the assistant. Tap 'Retry' or send again.",
+        status: "failed", canRetry: true
+      });
     } finally {
+      sendingRef.current = false;
       setIsTyping(false);
       scrollToEnd();
     }

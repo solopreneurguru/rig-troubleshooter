@@ -1,27 +1,43 @@
-import { NextResponse, NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import OpenAI from "openai";
+export const runtime = "edge";
 
 export async function POST(
-  req: NextRequest,
-  context: { params: Promise<{ id: string }> | { id: string } }
+  req: Request,
+  { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = await (context.params instanceof Promise ? context.params : Promise.resolve(context.params));
-    const body = await req.json().catch(() => ({}));
-    const raw = (body?.message ?? "").toString();
-    const message = raw.slice(0, 4000).trim();
+    const { text, rigName, equipmentName } = await req.json();
+    if (!text || typeof text !== "string") {
+      return NextResponse.json({ ok: false, error: "Missing text" }, { status: 400 });
+    }
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json({ ok: false, error: "Missing OPENAI_API_KEY" }, { status: 500 });
+    }
 
-    if (!id) return NextResponse.json({ ok: false, error: "session id required" }, { status: 400 });
-    if (!message) return NextResponse.json({ ok: false, error: "message required" }, { status: 400 });
+    const sys = [
+      "You are Rig Troubleshooter, a calm, stepwise industrial support assistant.",
+      "Always respect safety: never energize/open panels without authorization, LOTO, PPE.",
+      rigName ? `Rig: ${rigName}` : "",
+      equipmentName ? `Equipment: ${equipmentName}` : "",
+    ].filter(Boolean).join("\n");
 
-    // TODO: Replace this stub with the real assistant pipeline.
-    // For now, we echo something useful so the UI flows end-to-end.
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: text },
+      ],
+    });
+
     const reply =
-      "Got it. (stub) I received: \"" +
-      message.replace(/\s+/g, " ").slice(0, 200) +
-      "\" — I'm connected and ready once the real assistant is wired.";
+      completion.choices?.[0]?.message?.content?.trim() ||
+      "I'm here and ready. What details can you share about the issue?";
 
     return NextResponse.json({ ok: true, reply });
   } catch (err: any) {
-    return NextResponse.json({ ok: false, error: err?.message || "server error" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: err?.message || "Chat error" }, { status: 500 });
   }
 }
