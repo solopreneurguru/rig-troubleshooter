@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 // helper to persist an outgoing message (safe if API missing)
 async function persistOutgoingMessage(sessionId: string, msg: { role: string; text: string; docMeta?: any }) {
@@ -79,18 +79,17 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
   const [draft, setDraft] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
-  const listRef = useRef<HTMLDivElement | null>(null);
+  // sentinel element at the bottom of the chat for smooth auto-scroll
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   
-  const scrollToBottom = () => {
-    // Smooth scroll to the sentinel at the end of the message list
+  const scrollToBottom = useCallback(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  };
+  }, []);
 
-  // Re-run when message count changes so new bubbles come into view
+  // Whenever the message list length changes, nudge the view to the bottom
   useEffect(() => {
     scrollToBottom();
-  }, [messages.length]); // IMPORTANT: depend on messages.length
+  }, [scrollToBottom, messages.length]);
   
   // Initialize from server data once when sessionId changes
   useEffect(() => {
@@ -303,7 +302,7 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
         {/* Chat Area */}
         <div className="flex-1 flex flex-col relative">
           {/* Messages */}
-          <div ref={listRef} className="flex flex-col px-4 pt-4 pb-28 gap-2 overflow-y-auto min-h-[40vh]">
+          <div className="flex flex-col px-4 pt-4 pb-28 gap-2 overflow-y-auto min-h-[40vh]">
             {messages.length === 0 ? (
               <div className="mt-6 text-sm text-neutral-500">No messages yet. Start the conversation.</div>
             ) : (
