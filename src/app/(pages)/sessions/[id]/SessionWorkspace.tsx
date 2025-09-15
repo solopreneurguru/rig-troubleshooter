@@ -81,15 +81,15 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
   const [showSuggestions, setShowSuggestions] = useState(true);
   // sentinel element at the bottom of the chat for smooth auto-scroll
   const chatEndRef = useRef<HTMLDivElement | null>(null);
-  
-  const scrollToBottom = useCallback(() => {
+
+  // single, canonical auto-scroll helper
+  const scrollToEnd = useCallback(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, []);
 
-  // Whenever the message list length changes, nudge the view to the bottom
   useEffect(() => {
-    scrollToBottom();
-  }, [scrollToBottom, messages.length]);
+    scrollToEnd();
+  }, [scrollToEnd, messages.length]);
   
   // Initialize from server data once when sessionId changes
   useEffect(() => {
@@ -102,9 +102,9 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
     setMessages(initial);
   }, [sessionId]); // IMPORTANT: only sessionId dependency
 
-  const scrollToBottom = () => chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToEnd = () => chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
-  useEffect(() => { scrollToBottom(); });
+  useEffect(() => { scrollToEnd(); });
 
   // Load session data for equipment context
   const loadSession = useCallback(async () => {
@@ -219,7 +219,7 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
       setMessages(prev => prev.map(m => m.id === id ? { ...m, status: "failed" } : m));
     } finally {
       setIsTyping(false);
-      scrollToBottom();
+      scrollToEnd();
     }
   }
 
@@ -319,7 +319,7 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
             {isTyping && (
               <div className="text-xs text-neutral-500 px-1 mt-1">Assistant is typing…</div>
             )}
-            {/* sentinel for auto-scroll */}
+            {/* after messages.map(...) */}
             <div ref={chatEndRef} />
           </div>
 
