@@ -80,16 +80,17 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
   const [isTyping, setIsTyping] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
   
-  // Auto-scroll to newest message
+  const scrollToBottom = () => {
+    // Smooth scroll to the sentinel at the end of the message list
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  };
+
+  // Re-run when message count changes so new bubbles come into view
   useEffect(() => {
-    // slight delay allows layout to paint before scrolling
-    const t = setTimeout(() => {
-      const el = listRef.current;
-      el?.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "end" });
-    }, 10);
-    return () => clearTimeout(t);
-  }, [messages.length]);
+    scrollToBottom();
+  }, [messages.length]); // IMPORTANT: depend on messages.length
   
   // Initialize from server data once when sessionId changes
   useEffect(() => {
@@ -319,6 +320,8 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
             {isTyping && (
               <div className="text-xs text-neutral-500 px-1 mt-1">Assistant is typing…</div>
             )}
+            {/* sentinel for auto-scroll */}
+            <div ref={chatEndRef} />
           </div>
 
           {/* Quick checks */}
