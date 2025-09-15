@@ -28,12 +28,17 @@ async function getSchema(tableName: string) {
   try { return await getTableFields(null as any, tableName); } catch { return { fields: {} as Record<string, any> }; }
 }
 
-async function airtableFetch(path: string, init?: RequestInit) {
-  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(path)}`;
+async function airtableFetch(
+  path: string,
+  apiKey: string,
+  baseId: string,
+  init?: RequestInit
+) {
+  const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(path)}`;
   return withDeadline(fetch(url, {
     ...init,
     headers: {
-      Authorization: `Bearer ${AIRTABLE_REST_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
       ...(init?.headers || {}),
     },
@@ -87,7 +92,12 @@ export async function GET(
   q.set("sort[0][direction]", "asc");
   q.set("filterByFormula", formula);
 
-  const res = await airtableFetch(`${TB_CHATS}?${q.toString()}`, { method: "GET" });
+  const res = await airtableFetch(
+    `${TB_CHATS}?${q.toString()}`,
+    AIRTABLE_KEY,
+    AIRTABLE_BASE_ID,
+    { method: "GET" }
+  );
   const json = await res.json().catch(() => ({})) as any;
   if (!res.ok) {
     return NextResponse.json({ ok: false, error: "Airtable list failed", status: res.status, body: json }, { status: 502 });
@@ -170,10 +180,15 @@ export async function POST(
   // NEVER write CreatedAt; Airtable computes it if present. Avoids 422.
   for (const k of CREATED_AT_FIELDS) delete f[k];
 
-  const res = await airtableFetch(TB_CHATS, {
-    method: "POST",
-    body: JSON.stringify({ records: [{ fields: f }] }),
-  });
+  const res = await airtableFetch(
+    TB_CHATS,
+    AIRTABLE_KEY,
+    AIRTABLE_BASE_ID,
+    {
+      method: "POST",
+      body: JSON.stringify({ records: [{ fields: f }] }),
+    }
+  );
   const json = await res.json().catch(() => ({})) as any;
 
   if (!res.ok) {
