@@ -79,7 +79,17 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
   const [draft, setDraft] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
-  const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  
+  // Auto-scroll to newest message
+  useEffect(() => {
+    // slight delay allows layout to paint before scrolling
+    const t = setTimeout(() => {
+      const el = listRef.current;
+      el?.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }, 10);
+    return () => clearTimeout(t);
+  }, [messages.length]);
   
   // Initialize from server data once when sessionId changes
   useEffect(() => {
@@ -292,11 +302,9 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
         {/* Chat Area */}
         <div className="flex-1 flex flex-col relative">
           {/* Messages */}
-          <div id="chat-scroll" className="flex-1 overflow-y-auto px-4 pt-4 pb-28">
+          <div ref={listRef} className="flex flex-col px-4 pt-4 pb-28 gap-2 overflow-y-auto min-h-[40vh]">
             {messages.length === 0 ? (
-              <div className="mt-6 text-sm text-neutral-500">
-                No messages yet. Start the conversation.
-              </div>
+              <div className="mt-6 text-sm text-neutral-500">No messages yet. Start the conversation.</div>
             ) : (
               messages.map((m) => (
                 <ChatBubble
@@ -304,11 +312,7 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
                   role={m.role}
                   text={m.text}
                   status={m.status}
-                  onRetry={
-                    m.status === "failed" && m.role === "user"
-                      ? () => resendFailed(m.id)
-                      : undefined
-                  }
+                  onRetry={m.status === "failed" && m.role === "user" ? () => resendFailed(m.id) : undefined}
                 />
               ))
             )}
@@ -317,45 +321,36 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
             )}
           </div>
 
+          {/* Quick checks */}
+          <div className="sticky bottom-[72px] left-0 right-0 flex flex-wrap gap-2 text-xs text-neutral-400 px-3 py-2 bg-black/60 backdrop-blur border-t border-neutral-800">
+            <span className="opacity-80">Quick checks (optional)</span>
+            <button type="button" className="chip" onClick={() => setDraft(prev => prev + (prev ? "\n" : "") + "Check current mode")}>Check current mode</button>
+            <button type="button" className="chip" onClick={() => setDraft(prev => prev + (prev ? "\n" : "") + "Read commanded vs actual RPM")}>Read commanded vs actual RPM</button>
+            <button type="button" className="chip" onClick={() => setDraft(prev => prev + (prev ? "\n" : "") + "List recent parameter changes")}>List recent parameter changes</button>
+            <button type="button" className="chip" onClick={() => setDraft(prev => prev + (prev ? "\n" : "") + "Upload PLC snapshot")}>Upload PLC snapshot</button>
+          </div>
+
           {/* Composer */}
           <form
+            className="sticky bottom-0 left-0 right-0 flex items-end gap-2 bg-black/60 backdrop-blur px-3 py-3 border-t border-neutral-800"
             onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-            className="sticky bottom-0 inset-x-0 border-t border-neutral-800/60 bg-neutral-950/85 backdrop-blur supports-[backdrop-filter]:bg-neutral-950/75"
           >
-            <div className="px-4 py-3 space-y-2">
-              {/* Quick checks */}
-              <div className="flex flex-wrap gap-2 text-xs text-neutral-400">
-                <span className="opacity-80">Quick checks (optional)</span>
-                <button type="button" className="chip" onClick={() => setDraft(prev => prev + (prev ? "\n" : "") + "Check current mode")}>Check current mode</button>
-                <button type="button" className="chip" onClick={() => setDraft(prev => prev + (prev ? "\n" : "") + "Read commanded vs actual RPM")}>Read commanded vs actual RPM</button>
-                <button type="button" className="chip" onClick={() => setDraft(prev => prev + (prev ? "\n" : "") + "List recent parameter changes")}>List recent parameter changes</button>
-                <button type="button" className="chip" onClick={() => setDraft(prev => prev + (prev ? "\n" : "") + "Upload PLC snapshot")}>Upload PLC snapshot</button>
-              </div>
-
-              {/* Composer row */}
-              <div className="flex items-end gap-2">
-                <textarea
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                  placeholder="Describe what you see, attach steps, or ask a question…"
-                  rows={1}
-                  className="w-full max-h-40 min-h-[44px] resize-y rounded-xl bg-neutral-900 border border-neutral-800 focus:border-blue-600/60 focus:outline-none px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500"
-                />
-                <button
-                  type="submit"
-                  disabled={!draft.trim() || isTyping}
-                  className="rounded-xl px-4 py-2 text-sm bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-sm"
-                >
-                  {isTyping ? "Sending…" : "Send"}
-                </button>
-              </div>
-            </div>
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+              }}
+              placeholder="Describe what you see, attach steps, or ask a question…"
+              className="flex-1 resize-none rounded-xl bg-neutral-900 text-neutral-100 border border-neutral-700 px-3 py-2 leading-6 min-h-[40px] max-h-[160px] outline-none focus:border-neutral-500"
+            />
+            <button
+              type="submit"
+              disabled={!draft.trim() || isTyping}
+              className="inline-flex items-center justify-center rounded-xl px-4 h-[40px] bg-emerald-600 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-emerald-500 transition"
+            >
+              Send
+            </button>
           </form>
         </div>
 
