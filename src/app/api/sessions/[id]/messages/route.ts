@@ -45,10 +45,10 @@ type Params = { id: string };
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  ctx: { params: Promise<Params> }
 ) {
   try {
-    const sessionId = params.id;
+    const { id: sessionId } = await ctx.params;
     const limit = Number(new URL(req.url).searchParams.get("limit") ?? "50");
 
     logServer("api_start", {
@@ -128,7 +128,7 @@ export async function POST(
   ctx: { params: Promise<Params> }
 ) {
   try {
-    const { id } = await ctx.params;
+    const { id: sessionId } = await ctx.params;
 
     if (!AIRTABLE_REST_KEY || !AIRTABLE_BASE_ID) {
       console.error("POST /api/sessions/[id]/messages failed: Missing Airtable env");
