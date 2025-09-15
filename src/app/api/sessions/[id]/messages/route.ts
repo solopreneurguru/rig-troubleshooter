@@ -171,8 +171,8 @@ export async function POST(
   else f["Text"] = body.text;
 
   if (roleKey) f[roleKey] = body.role || "user";
-  if (linkKey && validRecId(id)) f[linkKey] = [{ id }];
-  else f["SessionId"] = id; // fallback as plain text if no link field exists
+  if (linkKey && validRecId(sessionId)) f[linkKey] = [{ id: sessionId }];
+  else f["SessionId"] = sessionId; // fallback as plain text if no link field exists
 
   if (body.docMeta && docIdKey) f[docIdKey] = body.docMeta.id || null;
   if (body.docMeta && docTitleKey) f[docTitleKey] = body.docMeta.title || null;

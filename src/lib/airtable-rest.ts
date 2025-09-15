@@ -1,4 +1,4 @@
-import { env, requireEnv } from "./env";
+import { requireEnv } from "./env";
 
 export const F_CHAT_TEXT = "Text";
 
