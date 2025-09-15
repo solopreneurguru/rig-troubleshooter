@@ -23,9 +23,9 @@ function pick(keys: string[], fields: Record<string, any>) {
   return null;
 }
 
-async function getSchema() {
+async function getSchema(tableName: string) {
   // metadata helper returns { fields: { name: {type?: string, ...} } } or similar; we only need names
-  try { return await getTableFields(null as any, TB_CHATS); } catch { return { fields: {} as Record<string, any> }; }
+  try { return await getTableFields(null as any, tableName); } catch { return { fields: {} as Record<string, any> }; }
 }
 
 async function airtableFetch(path: string, init?: RequestInit) {
@@ -66,7 +66,7 @@ export async function GET(
       return NextResponse.json({ error: "Invalid session id" }, { status: 400 });
     }
 
-  const schema = await getSchema();
+    const schema = await getSchema(TB_CHATS);
   const fields = new Set(Object.keys((schema as any)?.fields || {}));
   const linkKey = [...SESSION_LINK_FIELDS].find(f => fields.has(f)) || "Session";
   const roleKey = [...ROLE_FIELDS].find(f => fields.has(f)) || "Role";
@@ -146,7 +146,7 @@ export async function POST(
       );
     }
 
-  const schema = await getSchema();
+  const schema = await getSchema(TB_CHATS);
   const fields = new Set(Object.keys((schema as any)?.fields || {}));
   const linkKey = [...SESSION_LINK_FIELDS].find(f => fields.has(f));
   const roleKey = [...ROLE_FIELDS].find(f => fields.has(f));
