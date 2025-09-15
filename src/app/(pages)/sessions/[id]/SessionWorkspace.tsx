@@ -1,21 +1,11 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
 
-// helper to persist an outgoing message (safe if API missing)
-async function persistOutgoingMessage(sessionId: string, msg: { role: string; text: string; docMeta?: any }) {
-  try {
-    await fetch(`/api/sessions/${sessionId}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(msg),
-    });
-  } catch {}
-}
-
 // helper to load messages and hydrate UI if addMessage exists
 async function hydrateMessages(sessionId: string, addMessage?: (m: any) => void) {
   try {
-    const res = await fetch(`/api/sessions/${sessionId}/messages?limit=50`, { cache: "no-store" });
+    const qs = new URLSearchParams({ limit: String(50) }).toString();
+    const res = await fetch(`/api/sessions/${sessionId}/messages?${qs}`, { cache: "no-store" });
     const data = await res.json().catch(() => null);
     if (data?.ok && Array.isArray(data.items) && addMessage) {
       data.items.forEach((m: any) => addMessage({ role: m.role || "assistant", text: m.text || "" }));

@@ -4,31 +4,43 @@ import { airtableGet, airtablePatch, TB_CHATS, F_CHAT_TEXT } from "@/lib/airtabl
 type Role = "user" | "assistant" | "system";
 export const runtime = "nodejs";
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    const { id } = await params;
-    const body = await req.json();
-    const role: Role = body?.role;
-    const text: string = body?.text ?? "";
-    if (!id || !text || !role) return NextResponse.json({ ok:false, error:"missing id/role/text" }, { status: 400 });
+    const chatId = params.id;
+    const body = await req.json().catch(() => ({}));
+    const { text, append, role, prefix, suffix } = body ?? {};
+
+    const line = (text ?? append)?.toString().trim();
+    if (!line) {
+      return NextResponse.json(
+        { error: "Missing text. Send { text: string } (or { append: string })." },
+        { status: 400 }
+      );
+    }
 
     // fetch current text (if any)
-    const current = await airtableGet(TB_CHATS, id);
+    const current = await airtableGet(TB_CHATS, chatId);
     const existing = current?.fields?.[F_CHAT_TEXT] ?? "";
 
-    const ts = new Date().toISOString();
-    // Simple, readable line format
-    const line = `[${ts}] ${role.toUpperCase()}: ${text}`.trim();
+    // normalize line with role/prefix/suffix
+    const stamp = new Date().toISOString();
+    const normalized =
+      [prefix, role ? role.toUpperCase() + ":" : null, line, suffix]
+        .filter(Boolean)
+        .join(" ").trim();
 
     // Guard: Airtable long text limit ~100k. Keep last ~95k.
-    const joined = (existing ? `${existing}\n` : "") + line;
+    const joined = (existing ? `${existing}\n` : "") + `[${stamp}] ${normalized}`;
     const MAX = 95_000;
     const trimmed = joined.length > MAX ? joined.slice(joined.length - MAX) : joined;
 
-    await airtablePatch(TB_CHATS, id, { [F_CHAT_TEXT]: trimmed });
+    await airtablePatch(TB_CHATS, chatId, { [F_CHAT_TEXT]: trimmed });
 
     return NextResponse.json({ ok: true, len: trimmed.length });
-  } catch (e:any) {
-    return NextResponse.json({ ok:false, error: e?.message ?? "append failed" }, { status: 500 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message ?? "append-text failed" }, { status: 500 });
   }
 }
