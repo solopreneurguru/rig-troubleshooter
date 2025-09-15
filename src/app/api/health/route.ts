@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
-import { env } from "@/lib/env";
+export const runtime = "nodejs";
 
-export const runtime = "edge";
-
-export async function GET() {
-  const present = Object.fromEntries(
-    Object.entries(env).map(([k, v]) => [k, Boolean(v)])
-  );
-  return NextResponse.json({ ok: true, present, ts: new Date().toISOString() });
+export function GET() {
+  const p = (k: string) => Boolean(process.env[k]);
+  return NextResponse.json({
+    ok: true,
+    present: {
+      AIRTABLE_KEY: p("AIRTABLE_KEY") || p("AIRTABLE_REST_KEY") || p("AIRTABLE_API_KEY"),
+      AIRTABLE_BASE_ID: p("AIRTABLE_BASE_ID"),
+      TB_CHATS: p("TB_CHATS") || p("TB_MESSAGES"),
+      OPENAI_API_KEY: p("OPENAI_API_KEY"),
+    },
+    ts: new Date().toISOString()
+  });
 }

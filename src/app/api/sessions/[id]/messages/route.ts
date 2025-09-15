@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTableFields } from "@/lib/airtable-metadata";
 import { withDeadline } from "@/lib/withDeadline";
+import { requireEnv } from "@/lib/env";
+import { logServer } from "@/lib/logger";
 
-const AIRTABLE_REST_KEY = process.env.AIRTABLE_REST_KEY!;
-const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID!;
-const TB_CHATS = process.env.AIRTABLE_TABLE_CHATS || "Chats";
+export const runtime = "nodejs";
 
 // Candidate field names (schema-agnostic)
 const SESSION_LINK_FIELDS = ["Session", "RigSession", "SessionId", "Session (link)", "session"];
@@ -45,21 +45,26 @@ type Params = { id: string };
 
 export async function GET(
   req: NextRequest,
-  ctx: { params: Promise<Params> }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = await ctx.params;
-    
-    if (!AIRTABLE_REST_KEY || !AIRTABLE_BASE_ID) {
-      console.error("GET /api/sessions/[id]/messages failed: Missing Airtable env");
-      return NextResponse.json({ error: "Missing Airtable env" }, { status: 500 });
-    }
-    if (!validRecId(id)) {
+    const sessionId = params.id;
+    const limit = Number(new URL(req.url).searchParams.get("limit") ?? "50");
+
+    logServer("api_start", {
+      route: "sessions/[id]/messages",
+      sessionId,
+      limit
+    });
+
+    // Require env vars with aliases
+    const AIRTABLE_KEY = requireEnv("AIRTABLE_KEY", ["AIRTABLE_REST_KEY", "AIRTABLE_API_KEY"]);
+    const AIRTABLE_BASE_ID = requireEnv("AIRTABLE_BASE_ID");
+    const TB_CHATS = requireEnv("TB_CHATS", ["TB_MESSAGES"]);
+
+    if (!validRecId(sessionId)) {
       return NextResponse.json({ error: "Invalid session id" }, { status: 400 });
     }
-
-    const { searchParams } = new URL(req.url);
-    const limit = Math.max(1, Math.min(100, Number(searchParams.get("limit")) || 50));
 
   const schema = await getSchema();
   const fields = new Set(Object.keys((schema as any)?.fields || {}));
@@ -105,9 +110,12 @@ export async function GET(
 
     return NextResponse.json({ ok: true, items });
   } catch (err: any) {
-    console.error("GET /api/sessions/[id]/messages failed:", err);
+    logServer("api_error", {
+      route: "sessions/[id]/messages",
+      err: String(err?.message ?? err)
+    });
     return NextResponse.json(
-      { error: String(err?.message ?? err) },
+      { ok: false, error: String(err?.message ?? err), cause: "internal" },
       { status: 500 }
     );
   }

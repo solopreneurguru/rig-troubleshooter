@@ -6,11 +6,21 @@ async function hydrateMessages(sessionId: string, addMessage?: (m: any) => void)
   try {
     const qs = new URLSearchParams({ limit: String(50) }).toString();
     const res = await fetch(`/api/sessions/${sessionId}/messages?${qs}`, { cache: "no-store" });
-    const data = await res.json().catch(() => null);
+    
+    if (!res.ok) {
+      const j = await res.json().catch(() => null);
+      console.warn("messages load failed", { status: res.status, body: j });
+      // continue with an empty view so the UI stays responsive
+      return;
+    }
+
+    const data = await res.json();
     if (data?.ok && Array.isArray(data.items) && addMessage) {
       data.items.forEach((m: any) => addMessage({ role: m.role || "assistant", text: m.text || "" }));
     }
-  } catch {}
+  } catch (err) {
+    console.warn("messages load failed", err);
+  }
 }
 import ChatBubble from "./ChatBubble";
 import DocsPanel from "./DocsPanel";
