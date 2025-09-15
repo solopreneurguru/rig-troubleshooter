@@ -74,11 +74,19 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
   const [sessionData, setSessionData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  type Msg = { id: string; role: "user" | "assistant" | "system"; text: string; status?: "sending" | "sent" | "failed" };
+  type MsgStatus = "sending" | "sent" | "failed";
+  type Msg = {
+    id: string;
+    role: "user" | "assistant" | "system";
+    text: string;
+    status?: MsgStatus;
+    canRetry?: boolean;
+  };
   const [messages, setMessages] = useState<Msg[]>([]);
   const [draft, setDraft] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
+  const sendingRef = useRef(false);
   // sentinel element at the bottom of the chat for smooth auto-scroll
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -155,8 +163,23 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
     }
   }, [sessionId]);
 
-  const addLocalMessage = useCallback((msg: { role: "user" | "assistant"; text: string; status: string; canRetry?: boolean }) => {
-    setMessages(prev => [...prev, { ...msg, id: crypto.randomUUID() }]);
+  type LocalMsgInput = {
+    role: Msg["role"];
+    text: string;
+    status?: Msg["status"];
+    canRetry?: boolean;
+  };
+
+  const addLocalMessage = useCallback((msg: LocalMsgInput) => {
+    // Construct a fully-typed Msg before updating state
+    const m: Msg = {
+      id: crypto.randomUUID(),
+      role: msg.role,
+      text: msg.text,
+      status: msg.status,      // must be "sending" | "sent" | "failed" | undefined
+      canRetry: msg.canRetry,
+    };
+    setMessages(prev => [...prev, m]);
   }, []);
 
   async function actuallySend(text: string) {
@@ -213,7 +236,7 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
     // mark as sending
     setMessages(prev => prev.map(m => m.id === id ? { ...m, status: "sending" } : m));
     // attempt the send again using the same text
-    await actuallySend(item.text, id); // pass existing id so we don't duplicate
+    await actuallySend(item.text); // retry sending the message
   }
 
   const handleSend = useCallback(() => {
