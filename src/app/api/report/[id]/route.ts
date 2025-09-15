@@ -98,7 +98,7 @@ export async function GET(req: NextRequest, ctx: IdContext) {
     const buffer = await renderToBuffer(pdfDoc);
 
     // ?store=1 to save publicly and return URL (JSON); else stream PDF
-    const url = new URL(_req.url);
+    const url = new URL(req.url);
     const store = url.searchParams.get("store");
     if (store && process.env.BLOB_READ_WRITE_TOKEN) {
       const key = `reports/${sessionId}-${Date.now()}.pdf`;

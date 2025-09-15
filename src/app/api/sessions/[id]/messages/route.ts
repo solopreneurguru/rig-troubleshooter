@@ -83,9 +83,9 @@ export async function GET(
   const docTypeKey = [...DOC_TYPE_FIELDS].find(f => fields.has(f));
 
   // formula tries the link field first; fall back to text equality if SessionId exists as text
-  let formula = `FIND("${esc(id)}", ARRAYJOIN({${linkKey}}))`;
+  let formula = `FIND("${esc(sessionId)}", ARRAYJOIN({${linkKey}}))`;
   if (!fields.has(linkKey) && fields.has("SessionId")) {
-    formula = `{SessionId} = "${esc(id)}"`;
+    formula = `{SessionId} = "${esc(sessionId)}"`;
   }
 
   const q = new URLSearchParams();
@@ -142,11 +142,10 @@ export async function POST(
   try {
     const sessionId = await getId(ctx);
 
-    if (!AIRTABLE_REST_KEY || !AIRTABLE_BASE_ID) {
-      console.error("POST /api/sessions/[id]/messages failed: Missing Airtable env");
-      return NextResponse.json({ error: "Missing Airtable env" }, { status: 500 });
-    }
-    if (!validRecId(id)) {
+    // Require env vars with aliases
+    const AIRTABLE_KEY = requireEnv("AIRTABLE_KEY", ["AIRTABLE_REST_KEY", "AIRTABLE_API_KEY"]);
+    const AIRTABLE_BASE_ID = requireEnv("AIRTABLE_BASE_ID");
+    if (!validRecId(sessionId)) {
       return NextResponse.json({ error: "Invalid session id" }, { status: 400 });
     }
 
