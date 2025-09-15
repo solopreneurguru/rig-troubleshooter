@@ -1,16 +1,18 @@
-import { NextResponse, NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { env, requireEnv } from "@/lib/env";
 import { logServer } from "@/lib/logger";
+import { getId, type IdContext } from "@/lib/route-ctx";
 
 type Params = { id: string };
 export const runtime = "nodejs"; // important for OpenAI SDK
 
 export async function POST(
   req: NextRequest,
-  ctx: { params: Promise<Params> }
+  ctx: IdContext
 ) {
-  const { id } = await ctx.params;
+  const id = await getId(ctx);
 
   logServer("api_start", {
     route: "sessions/[id]/chat",

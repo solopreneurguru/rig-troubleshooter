@@ -1,14 +1,16 @@
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { getEquipmentInstanceById } from "@/lib/airtable";
+import { getId, type IdContext } from "@/lib/route-ctx";
 
 export const runtime = "nodejs";
 
 export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  req: NextRequest,
+  ctx: IdContext
 ) {
   try {
-    const { id } = await params;
+    const id = await getId(ctx);
     const instance = await getEquipmentInstanceById(id);
     return NextResponse.json({ ok: true, instance });
   } catch (e: any) {

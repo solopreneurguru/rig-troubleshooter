@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { getTableFields } from "@/lib/airtable-metadata";
 import { withDeadline } from "@/lib/withDeadline";
 import { requireEnv } from "@/lib/env";
 import { logServer } from "@/lib/logger";
+import { getId, type IdContext } from "@/lib/route-ctx";
 
 export const runtime = "nodejs";
 
@@ -50,10 +52,10 @@ type Params = { id: string };
 
 export async function GET(
   req: NextRequest,
-  ctx: { params: Promise<Params> }
+  ctx: IdContext
 ) {
   try {
-    const { id: sessionId } = await ctx.params;
+    const sessionId = await getId(ctx);
     const limit = Number(new URL(req.url).searchParams.get("limit") ?? "50");
 
     logServer("api_start", {
@@ -135,10 +137,10 @@ export async function GET(
 // body: { role: "user" | "assistant", text: string, docMeta?: {id?: string, title?: string, type?: string} }
 export async function POST(
   req: NextRequest,
-  ctx: { params: Promise<Params> }
+  ctx: IdContext
 ) {
   try {
-    const { id: sessionId } = await ctx.params;
+    const sessionId = await getId(ctx);
 
     if (!AIRTABLE_REST_KEY || !AIRTABLE_BASE_ID) {
       console.error("POST /api/sessions/[id]/messages failed: Missing Airtable env");

@@ -1,9 +1,11 @@
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { Document, Page, Text, View, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import { getSessionBundle } from "@/lib/airtable";
 import { put } from "@vercel/blob";
 import { normalizeCitations } from "@/lib/citations";
 import React from "react";
+import { getId, type IdContext } from "@/lib/route-ctx";
 
 export const runtime = "nodejs";
 
@@ -88,9 +90,9 @@ function ReportDoc({ data }: any) {
   );
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, ctx: IdContext) {
   try {
-    const { id: sessionId } = await params;
+    const sessionId = await getId(ctx);
     const data = await getSessionBundle(sessionId);
     const pdfDoc = React.createElement(ReportDoc, { data });
     const buffer = await renderToBuffer(pdfDoc);

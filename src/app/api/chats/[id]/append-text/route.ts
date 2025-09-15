@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { airtableGet, airtablePatch, TB_CHATS, F_CHAT_TEXT } from "@/lib/airtable-rest";
+import { getId, type IdContext } from "@/lib/route-ctx";
 
 type Role = "user" | "assistant" | "system";
 export const runtime = "nodejs";
@@ -8,10 +10,10 @@ type Params = { id: string };
 
 export async function POST(
   req: NextRequest,
-  ctx: { params: Promise<Params> }
+  ctx: IdContext
 ) {
   try {
-    const { id: chatId } = await ctx.params;
+    const chatId = await getId(ctx);
     const body = await req.json().catch(() => ({}));
     const { text, append, role, prefix, suffix } = body ?? {};
 
