@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-export const preferredRegion = "iad1";
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 // File size limit: 25MB
 const MAX_FILE_SIZE = 25 * 1024 * 1024;

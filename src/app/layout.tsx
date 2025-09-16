@@ -3,7 +3,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/Header";
 import DevBanner from "@/components/DevBanner";
+import DiagBanner from "@/components/DiagBanner";
 import VersionBadge from "@/components/VersionBadge";
+import BuildBadge from "@/components/BuildBadge";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,6 +36,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <DevBanner />
+        {process.env.NEXT_PUBLIC_ENABLE_ADMIN_BANNER !== '0' && <DiagBanner />}
         <Header />
         {children}
         <footer style={{
@@ -52,6 +55,7 @@ export default function RootLayout({
           </div>
           <VersionBadge />
         </footer>
+        <BuildBadge />
       </body>
     </html>
   );

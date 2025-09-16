@@ -1,42 +1,21 @@
-import Airtable from "airtable";
-import { getAirtableEnv } from "./env";
+export type ChatMessage = { id?: string; role: 'user'|'assistant'|'system'; content: string; createdTime?: string };
 
-const A = getAirtableEnv();
-
-function getBase() {
-  Airtable.configure({ apiKey: A.key });
-  return new Airtable().base(A.baseId);
+export async function listMessages(sessionId: string): Promise<ChatMessage[]> {
+  const res = await fetch(`/api/chats/${sessionId}`, { method: 'GET', cache: 'no-store' });
+  if (!res.ok) throw new Error(`CHAT_LIST_${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data?.messages) ? data.messages : [];
 }
 
-export async function getMessages(sessionId: string) {
-  const base = getBase();
-  const messages = base(A.tables.messages);
-  const records = await messages
-    .select({
-      filterByFormula: `{SessionId} = '${sessionId}'`,
-      sort: [{ field: "CreatedTime", direction: "asc" }],
-    })
-    .all();
-
-  return records.map((r) => ({
-    id: r.id,
-    role: r.get("Role") || "assistant",
-    text: r.get("Text") || "",
-    createdAt: r.get("CreatedTime") || r.fields.CreatedTime || null,
-  }));
-}
-
-export async function createMessage(sessionId: string, text: string, role = "user") {
-  const base = getBase();
-  const messages = base(A.tables.messages);
-  const created = await messages.create([
-    {
-      fields: {
-        SessionId: sessionId,
-        Role: role,
-        Text: text,
-      },
-    },
-  ]);
-  return created[0];
+export async function sendMessage(sessionId: string, role: ChatMessage['role'], content: string) {
+  const res = await fetch(`/api/chats/${sessionId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role, content }),
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(`CHAT_POST_${res.status}:${j?.error ?? ''}`);
+  }
+  return res.json();
 }

@@ -8,9 +8,10 @@
     "start": "next start",
     "docs:update": "node scripts/docs-update.mjs",
     "docs:check": "node scripts/docs-update.mjs --check",
-    "smoke:prod": "node scripts/smoke-prod.mjs",
+    "smoke:prod": "tsx scripts/smoke-prod.ts",
     "check:routes": "node scripts/route-conflicts.mjs",
-    "smoke:routes": "node scripts/smoke-routes.mjs"
+    "smoke:routes": "node scripts/smoke-routes.mjs",
+    "bigbadwolf": "tsx scripts/bigbadwolf.ts"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.3.0",
@@ -29,6 +30,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "tsx": "^4.7.0"
   }
 }

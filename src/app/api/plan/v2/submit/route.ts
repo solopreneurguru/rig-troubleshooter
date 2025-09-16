@@ -5,9 +5,9 @@ import { getSessionById, getRulePackKeyForSession } from "@/lib/airtable";
 import { loadV2PackByKey } from "@/lib/plan_v2";
 import Airtable from "airtable";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-export const preferredRegion = "iad1";
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 function getBase() {
   const API_KEY = process.env.AIRTABLE_API_KEY;

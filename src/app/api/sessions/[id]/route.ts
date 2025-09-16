@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSessionById } from "@/lib/airtable";
 
-export const runtime = "nodejs";
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(
   request: Request,
@@ -12,6 +14,9 @@ export async function GET(
     const session = await getSessionById(id);
     return NextResponse.json({ ok: true, session });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'SESSION_GET_FAILED', 
+      detail: String(e?.message ?? e) 
+    }, { status: 500 });
   }
 }

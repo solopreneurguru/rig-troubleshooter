@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getAirtableEnv } from "@/lib/env";
 
-export const runtime = "nodejs";
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(req: Request) {
   console.log("api_start", { route: "documents/by-equipment", time: new Date().toISOString() });
@@ -37,6 +39,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, items: json.records || [] });
   } catch (err) {
     console.error("api_error", { route: "documents/by-equipment", err: String(err), stack: (err as any)?.stack });
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'DOC_LIST_FAILED', 
+      detail: String(err) 
+    }, { status: 500 });
   }
 }

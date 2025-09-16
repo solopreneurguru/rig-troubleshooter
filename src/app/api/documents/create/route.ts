@@ -6,6 +6,10 @@
 */
 
 import { NextResponse } from "next/server";
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 import { withDeadline } from "@/lib/withDeadline";
 import Airtable from "airtable";
 import { getTableFields } from "@/lib/airtable-metadata";
