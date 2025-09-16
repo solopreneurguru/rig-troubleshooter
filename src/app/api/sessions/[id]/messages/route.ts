@@ -47,101 +47,93 @@ async function airtableFetch(
   }), 10000, "chats-rest");
 }
 
-// GET /api/sessions/[id]/messages?limit=50
-type Params = { id: string };
-
 export async function GET(
   req: NextRequest,
   ctx: IdContext
 ) {
+  console.log("api_start", { route: "sessions/[id]/messages", time: new Date().toISOString() });
+
   try {
     const sessionId = await getId(ctx);
     const limit = Number(new URL(req.url).searchParams.get("limit") ?? "50");
 
-    logServer("api_start", {
-      route: "sessions/[id]/messages",
-      sessionId,
-      limit
-    });
-
-    // Get Airtable env vars
-    const A = getAirtableEnv();
+    const A = getAirtableEnv({ need: ["messages"] });
 
     if (!validRecId(sessionId)) {
       return NextResponse.json({ error: "Invalid session id" }, { status: 400 });
     }
 
     const schema = await getSchema(A.tables.messages);
-  const fields = new Set(Object.keys((schema as any)?.fields || {}));
-  const linkKey = [...SESSION_LINK_FIELDS].find(f => fields.has(f)) || "Session";
-  const roleKey = [...ROLE_FIELDS].find(f => fields.has(f)) || "Role";
-  const textKey = [...TEXT_FIELDS].find(f => fields.has(f)) || "Text";
-  const docIdKey = [...DOC_ID_FIELDS].find(f => fields.has(f));
-  const docTitleKey = [...DOC_TITLE_FIELDS].find(f => fields.has(f));
-  const docTypeKey = [...DOC_TYPE_FIELDS].find(f => fields.has(f));
+    const fields = new Set(Object.keys((schema as any)?.fields || {}));
+    const linkKey = [...SESSION_LINK_FIELDS].find(f => fields.has(f)) || "Session";
+    const roleKey = [...ROLE_FIELDS].find(f => fields.has(f)) || "Role";
+    const textKey = [...TEXT_FIELDS].find(f => fields.has(f)) || "Text";
+    const docIdKey = [...DOC_ID_FIELDS].find(f => fields.has(f));
+    const docTitleKey = [...DOC_TITLE_FIELDS].find(f => fields.has(f));
+    const docTypeKey = [...DOC_TYPE_FIELDS].find(f => fields.has(f));
 
-  // formula tries the link field first; fall back to text equality if SessionId exists as text
-  let formula = `FIND("${esc(sessionId)}", ARRAYJOIN({${linkKey}}))`;
-  if (!fields.has(linkKey) && fields.has("SessionId")) {
-    formula = `{SessionId} = "${esc(sessionId)}"`;
-  }
+    // formula tries the link field first; fall back to text equality if SessionId exists as text
+    let formula = `FIND("${esc(sessionId)}", ARRAYJOIN({${linkKey}}))`;
+    if (!fields.has(linkKey) && fields.has("SessionId")) {
+      formula = `{SessionId} = "${esc(sessionId)}"`;
+    }
 
-  const q = new URLSearchParams();
-  q.set("pageSize", String(limit));
-  q.set("sort[0][field]", CREATED_AT_FIELDS.find(f => fields.has(f)) || "CreatedTime");
-  q.set("sort[0][direction]", "asc");
-  q.set("filterByFormula", formula);
+    const q = new URLSearchParams();
+    q.set("pageSize", String(limit));
+    q.set("sort[0][field]", CREATED_AT_FIELDS.find(f => fields.has(f)) || "CreatedTime");
+    q.set("sort[0][direction]", "asc");
+    q.set("filterByFormula", formula);
 
-  const res = await airtableFetch(
-    `${A.tables.messages}?${q.toString()}`,
-    A.key,
-    A.baseId,
-    { method: "GET" }
-  );
-  const json = await res.json().catch(() => ({})) as any;
-  if (!res.ok) {
-    return NextResponse.json({ ok: false, error: "Airtable list failed", status: res.status, body: json }, { status: 502 });
-  }
+    const res = await airtableFetch(
+      `${A.tables.messages}?${q.toString()}`,
+      A.key,
+      A.baseId,
+      { method: "GET" }
+    );
+    const json = await res.json().catch(() => ({})) as any;
+    if (!res.ok) {
+      return NextResponse.json({ ok: false, error: "Airtable list failed", status: res.status, body: json }, { status: 502 });
+    }
 
-  const items = (json.records || []).map((r: any) => {
-    const f = r.fields || {};
-    return {
-      id: r.id,
-      role: f[roleKey] || "assistant",
-      text: f[textKey] || "",
-      createdAt: f[CREATED_AT_FIELDS.find(k => k in f) || "CreatedTime"] || null,
-      docMeta: docIdKey ? {
-        id: f[docIdKey] || null,
-        title: docTitleKey ? f[docTitleKey] || null : null,
-        type: docTypeKey ? f[docTypeKey] || null : null,
-      } : null,
-    };
-  });
+    const items = (json.records || []).map((r: any) => {
+      const f = r.fields || {};
+      return {
+        id: r.id,
+        role: f[roleKey] || "assistant",
+        text: f[textKey] || "",
+        createdAt: f[CREATED_AT_FIELDS.find(k => k in f) || "CreatedTime"] || null,
+        docMeta: docIdKey ? {
+          id: f[docIdKey] || null,
+          title: docTitleKey ? f[docTitleKey] || null : null,
+          type: docTypeKey ? f[docTypeKey] || null : null,
+        } : null,
+      };
+    });
 
     return NextResponse.json({ ok: true, items });
   } catch (err: any) {
-    logServer("api_error", {
-      route: "sessions/[id]/messages",
-      err: String(err?.message ?? err)
+    console.error("api_error", { 
+      route: "sessions/[id]/messages", 
+      err: String(err), 
+      stack: err?.stack 
     });
     return NextResponse.json(
-      { ok: false, error: String(err?.message ?? err), cause: "internal" },
+      { ok: false, error: String(err), cause: "internal" },
       { status: 500 }
     );
   }
 }
 
-// POST /api/sessions/[id]/messages
-// body: { role: "user" | "assistant", text: string, docMeta?: {id?: string, title?: string, type?: string} }
 export async function POST(
   req: NextRequest,
   ctx: IdContext
 ) {
+  console.log("api_start", { route: "sessions/[id]/messages", time: new Date().toISOString() });
+
   try {
     const sessionId = await getId(ctx);
+    const A = getAirtableEnv({ need: ["messages"] });
 
-    // Get Airtable env vars
-    const A = getAirtableEnv();
     if (!validRecId(sessionId)) {
       return NextResponse.json({ error: "Invalid session id" }, { status: 400 });
     }
@@ -154,51 +146,55 @@ export async function POST(
       );
     }
 
-  const schema = await getSchema(A.tables.messages);
-  const fields = new Set(Object.keys((schema as any)?.fields || {}));
-  const linkKey = [...SESSION_LINK_FIELDS].find(f => fields.has(f));
-  const roleKey = [...ROLE_FIELDS].find(f => fields.has(f));
-  const textKey = [...TEXT_FIELDS].find(f => fields.has(f));
-  const docIdKey = [...DOC_ID_FIELDS].find(f => fields.has(f));
-  const docTitleKey = [...DOC_TITLE_FIELDS].find(f => fields.has(f));
-  const docTypeKey = [...DOC_TYPE_FIELDS].find(f => fields.has(f));
+    const schema = await getSchema(A.tables.messages);
+    const fields = new Set(Object.keys((schema as any)?.fields || {}));
+    const linkKey = [...SESSION_LINK_FIELDS].find(f => fields.has(f));
+    const roleKey = [...ROLE_FIELDS].find(f => fields.has(f));
+    const textKey = [...TEXT_FIELDS].find(f => fields.has(f));
+    const docIdKey = [...DOC_ID_FIELDS].find(f => fields.has(f));
+    const docTitleKey = [...DOC_TITLE_FIELDS].find(f => fields.has(f));
+    const docTypeKey = [...DOC_TYPE_FIELDS].find(f => fields.has(f));
 
-  const f: Record<string, any> = {};
-  if (textKey) f[textKey] = body.text;
-  else f["Text"] = body.text;
+    const f: Record<string, any> = {};
+    if (textKey) f[textKey] = body.text;
+    else f["Text"] = body.text;
 
-  if (roleKey) f[roleKey] = body.role || "user";
-  if (linkKey && validRecId(sessionId)) f[linkKey] = [{ id: sessionId }];
-  else f["SessionId"] = sessionId; // fallback as plain text if no link field exists
+    if (roleKey) f[roleKey] = body.role || "user";
+    if (linkKey && validRecId(sessionId)) f[linkKey] = [{ id: sessionId }];
+    else f["SessionId"] = sessionId; // fallback as plain text if no link field exists
 
-  if (body.docMeta && docIdKey) f[docIdKey] = body.docMeta.id || null;
-  if (body.docMeta && docTitleKey) f[docTitleKey] = body.docMeta.title || null;
-  if (body.docMeta && docTypeKey) f[docTypeKey] = body.docMeta.type || null;
+    if (body.docMeta && docIdKey) f[docIdKey] = body.docMeta.id || null;
+    if (body.docMeta && docTitleKey) f[docTitleKey] = body.docMeta.title || null;
+    if (body.docMeta && docTypeKey) f[docTypeKey] = body.docMeta.type || null;
 
-  // NEVER write CreatedAt; Airtable computes it if present. Avoids 422.
-  for (const k of CREATED_AT_FIELDS) delete f[k];
+    // NEVER write CreatedAt; Airtable computes it if present. Avoids 422.
+    for (const k of CREATED_AT_FIELDS) delete f[k];
 
-  const res = await airtableFetch(
-    A.tables.messages,
-    A.key,
-    A.baseId,
-    {
-      method: "POST",
-      body: JSON.stringify({ records: [{ fields: f }] }),
+    const res = await airtableFetch(
+      A.tables.messages,
+      A.key,
+      A.baseId,
+      {
+        method: "POST",
+        body: JSON.stringify({ records: [{ fields: f }] }),
+      }
+    );
+    const json = await res.json().catch(() => ({})) as any;
+
+    if (!res.ok) {
+      return NextResponse.json({ ok: false, error: "Airtable create failed", status: res.status, body: json }, { status: 502 });
     }
-  );
-  const json = await res.json().catch(() => ({})) as any;
-
-  if (!res.ok) {
-    return NextResponse.json({ ok: false, error: "Airtable create failed", status: res.status, body: json }, { status: 502 });
-  }
 
     const recId = json?.records?.[0]?.id;
     return NextResponse.json({ ok: true, id: recId || null });
   } catch (err: any) {
-    console.error("POST /api/sessions/[id]/messages failed:", err);
+    console.error("api_error", { 
+      route: "sessions/[id]/messages", 
+      err: String(err), 
+      stack: err?.stack 
+    });
     return NextResponse.json(
-      { error: String(err?.message ?? err) },
+      { error: String(err) },
       { status: 500 }
     );
   }

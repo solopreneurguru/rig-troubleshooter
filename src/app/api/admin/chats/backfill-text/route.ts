@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "chatId is required" }, { status: 400 });
     }
 
-    const A = getAirtableEnv(); // { key, baseId, tables }
+    const A = getAirtableEnv({ need: ["messages"] }); // { key, baseId, tables }
     const baseUrl = `https://api.airtable.com/v0/${A.baseId}/${encodeURIComponent(A.tables.messages)}`;
     const q = new URLSearchParams();
     q.set("filterByFormula", `{SessionId} = '${chatId}'`);

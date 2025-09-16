@@ -1,4 +1,3 @@
-// src/app/api/sessions/create/route.ts
 import { NextResponse } from "next/server";
 import { airtableCreate } from "@/lib/airtable-rest";
 import { getAirtableEnv } from "@/lib/env";
@@ -50,10 +49,10 @@ function isUnknownFieldError(e: any) {
 
 export async function POST(req: Request) {
   console.log("api_start", { route: "sessions/create", time: new Date().toISOString() });
-  
+
   try {
     const body = (await req.json()) as Body;
-    const A = getAirtableEnv();
+    const A = getAirtableEnv({ need: ["sessions", "equipment"] });
 
     // Basic validation
     if (!body?.problem || body.problem.trim().length < 3) {

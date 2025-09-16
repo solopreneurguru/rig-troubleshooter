@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   console.log("api_start", { route: "reports/save", time: new Date().toISOString() });
 
   try {
-    const A = getAirtableEnv();
+    const A = getAirtableEnv({ need: ["sessions", "findings"] });
     const body = await req.json();
     const { sessionId, draft } = body as { sessionId: string; draft: ReportDraft };
 
@@ -89,7 +89,11 @@ export async function POST(req: Request) {
       pdfUrl,
     });
   } catch (err: any) {
-    console.error("api_error", { route: "reports/save", err: String(err), stack: err?.stack });
+    console.error("api_error", { 
+      route: "reports/save", 
+      err: String(err), 
+      stack: err?.stack 
+    });
     return NextResponse.json(
       { ok: false, error: err?.message || String(err) },
       { status: 500 }

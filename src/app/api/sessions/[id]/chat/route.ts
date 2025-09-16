@@ -5,7 +5,6 @@ import { getAirtableEnv, requireEnv } from "@/lib/env";
 import { logServer } from "@/lib/logger";
 import { getId, type IdContext } from "@/lib/route-ctx";
 
-type Params = { id: string };
 export const runtime = "nodejs"; // important for OpenAI SDK
 
 export async function POST(

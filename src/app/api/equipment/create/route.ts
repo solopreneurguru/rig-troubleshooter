@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     });
 
   try {
-    const A = getAirtableEnv();
+    const A = getAirtableEnv({ need: ["equipment"] });
     const base = new Airtable({ apiKey: A.key }).base(A.baseId);
     
     const input = (await req.json().catch(() => ({}))) as {
