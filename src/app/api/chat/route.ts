@@ -1,62 +1,63 @@
 import { NextResponse } from "next/server";
-import { listMessagesForSession, appendMessage } from "@/lib/chat";
+import { getMessages, createMessage } from "@/lib/chat";
 import { withDeadline } from "@/lib/withDeadline";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-export const preferredRegion = "iad1";
 
 export async function GET(req: Request) {
+  console.log("api_start", { route: "chat", time: new Date().toISOString() });
+
   try {
     const url = new URL(req.url);
     const sessionId = url.searchParams.get("sessionId");
-    
     if (!sessionId) {
-      return NextResponse.json({ ok: false, error: "Missing sessionId" }, { status: 400 });
+      return NextResponse.json({ error: "sessionId required" }, { status: 400 });
     }
 
-    const result = await withDeadline(
-      listMessagesForSession(sessionId), 
-      8000, 
-      'chat-list'
+    const messages = await withDeadline(
+      getMessages(sessionId),
+      10000,
+      "chat-list"
     );
-    
-    return NextResponse.json({ 
-      ok: true, 
-      sessionId, 
-      chatId: result.chatId, 
-      messages: result.items 
+
+    return NextResponse.json({ ok: true, messages });
+  } catch (err: any) {
+    console.error("api_error", { 
+      route: "chat", 
+      err: String(err), 
+      stack: err?.stack 
     });
-  } catch (e: any) {
-    if (e?.message?.includes('deadline')) {
-      return NextResponse.json({ ok: false, error: 'deadline', label: 'chat-list' }, { status: 503 });
-    }
-    return NextResponse.json({ ok: false, error: e?.message || "chat list failed" }, { status: 500 });
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
+  console.log("api_start", { route: "chat", time: new Date().toISOString() });
+
   try {
-    const body = await req.json().catch(() => ({}));
-    const sessionId = body?.sessionId as string;
-    const role = (body?.role as "user" | "assistant") || "user";
-    const text = (body?.text as string) || "";
+    const body = await req.json();
+    const { sessionId, text, role = "user" } = body;
 
     if (!sessionId || !text) {
-      return NextResponse.json({ ok: false, error: "Missing sessionId or text" }, { status: 400 });
+      return NextResponse.json(
+        { error: "sessionId and text required" },
+        { status: 400 }
+      );
     }
 
-    const result = await withDeadline(
-      appendMessage({ sessionId, role, text }), 
-      8000, 
-      'chat-append'
+    const message = await withDeadline(
+      createMessage(sessionId, text, role),
+      10000,
+      "chat-append"
     );
-    
-    return NextResponse.json({ ok: true, chatId: result.chatId, messageId: result.messageId });
-  } catch (e: any) {
-    if (e?.message?.includes('deadline')) {
-      return NextResponse.json({ ok: false, error: 'deadline', label: 'chat-append' }, { status: 503 });
-    }
-    return NextResponse.json({ ok: false, error: e?.message || "chat post failed" }, { status: 500 });
+
+    return NextResponse.json({ ok: true, message });
+  } catch (err: any) {
+    console.error("api_error", { 
+      route: "chat", 
+      err: String(err), 
+      stack: err?.stack 
+    });
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

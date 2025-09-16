@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { airtableCreate, airtablePatch } from "@/lib/airtable-rest";
+import { getAirtableEnv } from "@/lib/env";
+
+export const runtime = "nodejs";
 
 interface ReportDraft {
   title: string;
@@ -9,11 +12,11 @@ interface ReportDraft {
   docIds: string[];
 }
 
-const TB_FINDINGS = process.env.TB_FINDINGS || "Findings";
-const TB_SESSIONS = process.env.TB_SESSIONS || "Sessions";
-
 export async function POST(req: Request) {
+  console.log("api_start", { route: "reports/save", time: new Date().toISOString() });
+
   try {
+    const A = getAirtableEnv();
     const body = await req.json();
     const { sessionId, draft } = body as { sessionId: string; draft: ReportDraft };
 
@@ -42,11 +45,11 @@ export async function POST(req: Request) {
     let findingId: string;
     if (existingFindingId) {
       // Update existing
-      const updated = await airtablePatch(TB_FINDINGS, existingFindingId, findingFields);
+      const updated = await airtablePatch(A.tables.findings, existingFindingId, findingFields);
       findingId = updated.id;
     } else {
       // Create new
-      const created = await airtableCreate(TB_FINDINGS, findingFields);
+      const created = await airtableCreate(A.tables.findings, findingFields);
       findingId = created.id;
     }
 
@@ -69,13 +72,13 @@ export async function POST(req: Request) {
     }
 
     // 3. Update finding with PDF URL
-    await airtablePatch(TB_FINDINGS, findingId, {
+    await airtablePatch(A.tables.findings, findingId, {
       ReportURL: pdfUrl,
     });
 
     // 4. Update session status if needed
     if (draft.status === "Resolved") {
-      await airtablePatch(TB_SESSIONS, sessionId, {
+      await airtablePatch(A.tables.sessions, sessionId, {
         Status: "Closed",
       });
     }
@@ -86,6 +89,7 @@ export async function POST(req: Request) {
       pdfUrl,
     });
   } catch (err: any) {
+    console.error("api_error", { route: "reports/save", err: String(err), stack: err?.stack });
     return NextResponse.json(
       { ok: false, error: err?.message || String(err) },
       { status: 500 }

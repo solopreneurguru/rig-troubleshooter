@@ -29,6 +29,7 @@ export function getAirtableEnv() {
     rigs: requireEnv("TB_RIGS"),
     equipment: requireEnv("TB_EQUIPMENT"),
     docs: requireEnv("TB_DOCS"),
+    findings: requireEnv("TB_FINDINGS"),
   };
   return { key, baseId, tables };
 }

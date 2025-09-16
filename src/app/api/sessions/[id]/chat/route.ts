@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { getAirtableEnv } from "@/lib/env";
+import { getAirtableEnv, requireEnv } from "@/lib/env";
 import { logServer } from "@/lib/logger";
 import { getId, type IdContext } from "@/lib/route-ctx";
 
@@ -12,17 +12,10 @@ export async function POST(
   req: NextRequest,
   ctx: IdContext
 ) {
-  const id = await getId(ctx);
-
-  logServer("api_start", {
-    route: "sessions/[id]/chat",
-    vercelEnv: process.env.VERCEL_ENV,
-    commit: process.env.VERCEL_GIT_COMMIT_SHA,
-    hasOpenAI: !!process.env.OPENAI_API_KEY,
-    hasAirtable: true
-  });
+  console.log("api_start", { route: "sessions/[id]/chat", time: new Date().toISOString() });
 
   try {
+    const id = await getId(ctx);
     const body = await req.json().catch(() => ({}));
     const { text, rigName, equipmentName } = body;
     
@@ -34,7 +27,7 @@ export async function POST(
     }
 
     // Require OpenAI key
-    requireEnv("OPENAI_API_KEY");
+    const openaiKey = requireEnv("OPENAI_API_KEY");
 
     const sys = [
       "You are Rig Troubleshooter, a calm, stepwise industrial support assistant.",
@@ -43,7 +36,7 @@ export async function POST(
       equipmentName ? `Equipment: ${equipmentName}` : "",
     ].filter(Boolean).join("\n");
 
-    const client = new OpenAI({ apiKey: requireEnv("OPENAI_API_KEY") });
+    const client = new OpenAI({ apiKey: openaiKey });
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.2,
@@ -59,12 +52,13 @@ export async function POST(
 
     return NextResponse.json({ ok: true, reply });
   } catch (err: any) {
-    logServer("api_error", {
-      route: "sessions/[id]/chat",
-      err: String(err?.message ?? err)
+    console.error("api_error", { 
+      route: "sessions/[id]/chat", 
+      err: String(err), 
+      stack: err?.stack 
     });
     return NextResponse.json(
-      { ok: false, error: String(err?.message ?? err), cause: "internal" },
+      { ok: false, error: String(err), cause: "internal" },
       { status: 500 }
     );
   }

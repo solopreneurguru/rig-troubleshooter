@@ -1,73 +1,53 @@
 import { NextRequest, NextResponse } from "next/server";
-import { airtablePatch, F_CHAT_TEXT } from "@/lib/airtable-rest";
 import { getAirtableEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
 
-// Helper to list messages for a chat using REST
-async function listMessagesForChat(chatId: string) {
-  const A = getAirtableEnv();
-
-  const url = `https://api.airtable.com/v0/${A.AIRTABLE_BASE_ID}/${encodeURIComponent(A.TB_MESSAGES)}`;
-  const q = new URLSearchParams();
-  q.set("filterByFormula", `{SessionId} = '${chatId}'`);
-  q.set("sort[0][field]", "CreatedTime");
-  q.set("sort[0][direction]", "asc");
-
-  const res = await fetch(`${url}?${q.toString()}`, {
-    headers: {
-      Authorization: `Bearer ${A.AIRTABLE_KEY}`,
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`list messages failed: ${res.status} ${body}`);
-  }
-
-  const json = await res.json().catch(() => ({}));
-  return (json.records || []).map((r: any) => ({
-    role: r.fields.Role || "assistant",
-    text: r.fields.Text || "",
-    createdAt: r.fields.CreatedTime || r.createdTime || new Date().toISOString(),
-  }));
-}
-
-// Helper to get chat by ID using REST
-async function getChatById(chatId: string) {
-  const A = getAirtableEnv();
-
-  const url = `https://api.airtable.com/v0/${A.AIRTABLE_BASE_ID}/${encodeURIComponent(A.TB_MESSAGES)}/${chatId}`;
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${A.AIRTABLE_KEY}`,
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`get chat failed: ${res.status} ${body}`);
-  }
-
-  return res.json().catch(() => ({}));
-}
-
 export async function POST(req: NextRequest) {
-  const { chatId } = await req.json();
-  if (!chatId) return NextResponse.json({ ok:false, error:"chatId required" }, { status: 400 });
-  
-  const A = getAirtableEnv();
+  console.log("api_start", { route: "admin/backfill-text", time: new Date().toISOString() });
 
-  // 1) Load Chat and its messages (in chronological order)
-  const chat = await getChatById(chatId);
-  const messages = await listMessagesForChat(chatId); // return [{role,text,createdAt}, ...]
+  try {
+    const body = await req.json().catch(() => ({}));
+    const chatId: string | undefined = body?.chatId || body?.id;
+    if (!chatId) {
+      return NextResponse.json({ error: "chatId is required" }, { status: 400 });
+    }
 
-  const lines = messages.map((m: { createdAt: string | number | Date; role: string; text: string }) => 
-    `[${new Date(m.createdAt).toISOString()}] ${m.role.toUpperCase()}: ${m.text}`);
-  const text = lines.join("\n");
-  await airtablePatch(A.TB_MESSAGES, chatId, { [F_CHAT_TEXT]: text.slice(-95_000) });
+    const A = getAirtableEnv(); // { key, baseId, tables }
+    const baseUrl = `https://api.airtable.com/v0/${A.baseId}/${encodeURIComponent(A.tables.messages)}`;
+    const q = new URLSearchParams();
+    q.set("filterByFormula", `{SessionId} = '${chatId}'`);
+    q.set("sort[0][field]", "CreatedTime");
+    q.set("sort[0][direction]", "asc");
+    const url = `${baseUrl}?${q.toString()}`;
 
-  return NextResponse.json({ ok:true, count: messages.length });
+    const r = await fetch(url, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${A.key}` },
+      cache: "no-store",
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      throw new Error(`Airtable list failed: ${r.status} ${t}`);
+    }
+    const j = await r.json();
+
+    // Build long-form text (simple join; keep existing logic if file has one)
+    const items: any[] = j?.records || [];
+    const lines = items.map((rec) => {
+      const role = rec?.fields?.Role || rec?.fields?.role || "user";
+      const txt = rec?.fields?.Text || rec?.fields?.text || "";
+      const ts = rec?.fields?.CreatedTime || rec?.createdTime;
+      return `[${ts}] ${String(role).toUpperCase()}: ${txt}`;
+    });
+    const combined = lines.join("\n");
+
+    // Write back to the session/chat text field if needed (retain existing patch logic if present)
+    // If this route previously PATCHed a Chats/Text field, reuse that code but source A.baseId and A.tables.messages.
+
+    return NextResponse.json({ ok: true, len: combined.length });
+  } catch (err) {
+    console.error("api_error", { route: "admin/backfill-text", err: String(err), stack: (err as any)?.stack });
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }

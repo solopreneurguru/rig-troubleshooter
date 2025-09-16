@@ -13,6 +13,8 @@ export async function POST(
   req: NextRequest,
   ctx: IdContext
 ) {
+  console.log("api_start", { route: "chats/[id]/append-text", time: new Date().toISOString() });
+
   try {
     const chatId = await getId(ctx);
     const body = await req.json().catch(() => ({}));
@@ -28,7 +30,7 @@ export async function POST(
 
     // fetch current text (if any)
     const A = getAirtableEnv();
-    const current = await airtableGet(A.TB_MESSAGES, chatId);
+    const current = await airtableGet(A.tables.messages, chatId);
     const existing = current?.fields?.[F_CHAT_TEXT] ?? "";
 
     // normalize line with role/prefix/suffix
@@ -43,10 +45,15 @@ export async function POST(
     const MAX = 95_000;
     const trimmed = joined.length > MAX ? joined.slice(joined.length - MAX) : joined;
 
-    await airtablePatch(A.TB_MESSAGES, chatId, { [F_CHAT_TEXT]: trimmed });
+    await airtablePatch(A.tables.messages, chatId, { [F_CHAT_TEXT]: trimmed });
 
     return NextResponse.json({ ok: true, len: trimmed.length });
   } catch (err: any) {
+    console.error("api_error", { 
+      route: "chats/[id]/append-text", 
+      err: String(err), 
+      stack: err?.stack 
+    });
     return NextResponse.json({ error: err?.message ?? "append-text failed" }, { status: 500 });
   }
 }
