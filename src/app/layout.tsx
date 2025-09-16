@@ -4,7 +4,6 @@ import "./globals.css";
 import Header from "@/components/Header";
 import DevBanner from "@/components/DevBanner";
 import DiagBanner from "@/components/DiagBanner";
-import VersionBadge from "@/components/VersionBadge";
 import BuildBadge from "@/components/BuildBadge";
 
 const geistSans = Geist({
@@ -27,9 +26,6 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const sha = (process.env.VERCEL_GIT_COMMIT_SHA || "unknown").slice(0,7);
-  const marker = "FST-RIG-TS-FP";
-  
   return (
     <html lang="en">
       <body
@@ -39,22 +35,6 @@ export default function RootLayout({
         {process.env.NEXT_PUBLIC_ENABLE_ADMIN_BANNER !== '0' && <DiagBanner />}
         <Header />
         {children}
-        <footer style={{
-          marginTop:"2rem",
-          padding:"0.75rem 1rem",
-          fontSize:"12px",
-          opacity:0.6,
-          borderTop:"1px solid rgba(255,255,255,0.1)",
-          display:"flex",
-          justifyContent:"space-between",
-          alignItems:"center"
-        }}>
-          <div>
-            <span>build: <code>{sha}</code></span>
-            <span style={{marginLeft:12}}>marker: <code>{marker}</code></span>
-          </div>
-          <VersionBadge />
-        </footer>
         <BuildBadge />
       </body>
     </html>
