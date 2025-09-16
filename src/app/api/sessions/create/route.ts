@@ -52,7 +52,7 @@ export async function POST(req: Request) {
 
   try {
     const body = (await req.json()) as Body;
-    const A = getAirtableEnv({ need: ["sessions", "equipment"] });
+    const { key, baseId, tables } = getAirtableEnv();
 
     // Basic validation
     if (!body?.problem || body.problem.trim().length < 3) {
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
       if (body.newEquipment.serial) ef[pickSerial()] = body.newEquipment.serial;
 
       // IMPORTANT: DO NOT send CreatedAt or any computed/auto fields.
-      const createdEquip = await airtableCreate(A.tables.equipment, ef);
+      const createdEquip = await airtableCreate(tables.equipment, ef);
       equipmentId = createdEquip.id;
     }
 
@@ -84,7 +84,7 @@ export async function POST(req: Request) {
     for (const linkKey of EQUIP_LINK_CANDIDATES) {
       try {
         const fields = { ...baseFields, [linkKey]: [equipmentId] };
-        const session = await airtableCreate(A.tables.sessions, fields);
+        const session = await airtableCreate(tables.sessions, fields);
         const res = NextResponse.json({
           ok: true,
           sessionId: session.id,
@@ -101,7 +101,7 @@ export async function POST(req: Request) {
     }
 
     // 3) If no candidate link field exists, create session without link and return a hint
-    const minimal = await airtableCreate(A.tables.sessions, baseFields);
+    const minimal = await airtableCreate(tables.sessions, baseFields);
     return NextResponse.json({
       ok: true,
       sessionId: minimal.id,

@@ -57,13 +57,13 @@ export async function GET(
     const sessionId = await getId(ctx);
     const limit = Number(new URL(req.url).searchParams.get("limit") ?? "50");
 
-    const A = getAirtableEnv({ need: ["messages"] });
+    const { key, baseId, tables } = getAirtableEnv();
 
     if (!validRecId(sessionId)) {
       return NextResponse.json({ error: "Invalid session id" }, { status: 400 });
     }
 
-    const schema = await getSchema(A.tables.messages);
+    const schema = await getSchema(tables.messages);
     const fields = new Set(Object.keys((schema as any)?.fields || {}));
     const linkKey = [...SESSION_LINK_FIELDS].find(f => fields.has(f)) || "Session";
     const roleKey = [...ROLE_FIELDS].find(f => fields.has(f)) || "Role";
@@ -85,9 +85,9 @@ export async function GET(
     q.set("filterByFormula", formula);
 
     const res = await airtableFetch(
-      `${A.tables.messages}?${q.toString()}`,
-      A.key,
-      A.baseId,
+      `${tables.messages}?${q.toString()}`,
+      key,
+      baseId,
       { method: "GET" }
     );
     const json = await res.json().catch(() => ({})) as any;
@@ -132,7 +132,7 @@ export async function POST(
 
   try {
     const sessionId = await getId(ctx);
-    const A = getAirtableEnv({ need: ["messages"] });
+    const { key, baseId, tables } = getAirtableEnv();
 
     if (!validRecId(sessionId)) {
       return NextResponse.json({ error: "Invalid session id" }, { status: 400 });
@@ -146,7 +146,7 @@ export async function POST(
       );
     }
 
-    const schema = await getSchema(A.tables.messages);
+    const schema = await getSchema(tables.messages);
     const fields = new Set(Object.keys((schema as any)?.fields || {}));
     const linkKey = [...SESSION_LINK_FIELDS].find(f => fields.has(f));
     const roleKey = [...ROLE_FIELDS].find(f => fields.has(f));
@@ -171,9 +171,9 @@ export async function POST(
     for (const k of CREATED_AT_FIELDS) delete f[k];
 
     const res = await airtableFetch(
-      A.tables.messages,
-      A.key,
-      A.baseId,
+      tables.messages,
+      key,
+      baseId,
       {
         method: "POST",
         body: JSON.stringify({ records: [{ fields: f }] }),

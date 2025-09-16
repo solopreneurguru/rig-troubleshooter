@@ -8,23 +8,24 @@ export async function GET() {
     const A = getAirtableEnv();
     return NextResponse.json({
       ok: true,
-      present: {
-        AIRTABLE_KEY: true,
-        AIRTABLE_BASE_ID: true,
-        TB_SESSIONS: true,
-        TB_MESSAGES: true,
-        TB_RIGS: true,
-        TB_EQUIPMENT: true,
-        TB_DOCS: true,
-        OPENAI_API_KEY: !!process.env.OPENAI_API_KEY
+      airtable: {
+        key: true,
+        baseId: true,
+        tables: {
+          sessions: true,
+          messages: true,
+          rigs: true,
+          equipment: true,
+          docs: true
+        }
       },
-      ts: new Date().toISOString()
+      time: new Date().toISOString()
     });
   } catch (err: any) {
     return NextResponse.json({
       ok: false,
-      error: String(err),
-      ts: new Date().toISOString()
+      error: err.message,
+      time: new Date().toISOString()
     }, { status: 500 });
   }
 }

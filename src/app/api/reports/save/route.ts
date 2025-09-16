@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   console.log("api_start", { route: "reports/save", time: new Date().toISOString() });
 
   try {
-    const A = getAirtableEnv({ need: ["sessions", "findings"] });
+    const { key, baseId, tables } = getAirtableEnv();
     const body = await req.json();
     const { sessionId, draft } = body as { sessionId: string; draft: ReportDraft };
 
@@ -45,11 +45,11 @@ export async function POST(req: Request) {
     let findingId: string;
     if (existingFindingId) {
       // Update existing
-      const updated = await airtablePatch(A.tables.findings, existingFindingId, findingFields);
+      const updated = await airtablePatch(tables.findings, existingFindingId, findingFields);
       findingId = updated.id;
     } else {
       // Create new
-      const created = await airtableCreate(A.tables.findings, findingFields);
+      const created = await airtableCreate(tables.findings, findingFields);
       findingId = created.id;
     }
 
@@ -72,13 +72,13 @@ export async function POST(req: Request) {
     }
 
     // 3. Update finding with PDF URL
-    await airtablePatch(A.tables.findings, findingId, {
+    await airtablePatch(tables.findings, findingId, {
       ReportURL: pdfUrl,
     });
 
     // 4. Update session status if needed
     if (draft.status === "Resolved") {
-      await airtablePatch(A.tables.sessions, sessionId, {
+      await airtablePatch(tables.sessions, sessionId, {
         Status: "Closed",
       });
     }

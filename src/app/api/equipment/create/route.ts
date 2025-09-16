@@ -20,8 +20,8 @@ export async function POST(req: Request) {
     });
 
   try {
-    const A = getAirtableEnv({ need: ["equipment"] });
-    const base = new Airtable({ apiKey: A.key }).base(A.baseId);
+    const { key, baseId, tables } = getAirtableEnv();
+    const base = new Airtable({ apiKey: key }).base(baseId);
     
     const input = (await req.json().catch(() => ({}))) as {
       name?: string;
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     };
 
     // Discover allowed fields dynamically
-    const allow = new Set(await getTableFields(base, A.tables.equipment));
+    const allow = new Set(await getTableFields(base, tables.equipment));
 
     const NAME_FIELDS = ["Name", "Title", "Equipment Name", "Label"];
     const SERIAL_FIELDS = ["SerialNumber", "Serial", "S/N", "Serial No"];
@@ -63,11 +63,11 @@ export async function POST(req: Request) {
     if (typeKey && validRecId(input?.typeId)) fields[typeKey] = [{ id: input!.typeId }];
 
     // Use Airtable REST — always correct payload shape: { records: [{ fields }] }
-    const url = `https://api.airtable.com/v0/${A.baseId}/${encodeURIComponent(A.tables.equipment)}`;
+    const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tables.equipment)}`;
     const res = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${A.key}`,
+        Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ records: [{ fields }] }),

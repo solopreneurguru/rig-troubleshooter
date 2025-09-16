@@ -13,8 +13,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "chatId is required" }, { status: 400 });
     }
 
-    const A = getAirtableEnv({ need: ["messages"] }); // { key, baseId, tables }
-    const baseUrl = `https://api.airtable.com/v0/${A.baseId}/${encodeURIComponent(A.tables.messages)}`;
+    const { key, baseId, tables } = getAirtableEnv();
+    const baseUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tables.messages)}`;
     const q = new URLSearchParams();
     q.set("filterByFormula", `{SessionId} = '${chatId}'`);
     q.set("sort[0][field]", "CreatedTime");
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
     const r = await fetch(url, {
       method: "GET",
-      headers: { Authorization: `Bearer ${A.key}` },
+      headers: { Authorization: `Bearer ${key}` },
       cache: "no-store",
     });
     if (!r.ok) {
@@ -41,9 +41,6 @@ export async function POST(req: NextRequest) {
       return `[${ts}] ${String(role).toUpperCase()}: ${txt}`;
     });
     const combined = lines.join("\n");
-
-    // Write back to the session/chat text field if needed (retain existing patch logic if present)
-    // If this route previously PATCHed a Chats/Text field, reuse that code but source A.baseId and A.tables.messages.
 
     return NextResponse.json({ ok: true, len: combined.length });
   } catch (err) {
