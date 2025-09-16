@@ -79,7 +79,7 @@ import('node:https')
       const failures = Object.entries(data.tables).filter(([,v]: any) => v && v.ok === false);
       if (failures.length) {
         console.log('\nAirtable table failures:');
-        for (const [name, v]: any of failures) {
+        for (const [name, v] of failures) {
           console.log(`• ${name}: ${v.error || 'unknown error'}`);
         }
       }

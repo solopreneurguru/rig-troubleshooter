@@ -561,6 +561,36 @@ export function envStatus() {
   return Object.fromEntries(keys.map((k) => [k, process.env[k] ? "✓ set" : "✗ missing"]));
 }
 
+// ---- compat exports for diagnostics (non-breaking) ----
+type _AirtableBase = ReturnType<Airtable['base']>;
+
+function _need(k: string) {
+  const v = process.env[k];
+  if (!v) throw new Error(`Missing env: ${k}`);
+  return v;
+}
+
+// export getAirtableBase if not already exported
+export function getAirtableBase(): _AirtableBase {
+  // Lazy checks so import-time doesn't throw
+  const apiKey = _need('AIRTABLE_API_KEY');
+  const baseId = _need('AIRTABLE_BASE_ID');
+  // @ts-expect-error types from airtable pkg are looser in CJS/ESM
+  return new Airtable({ apiKey }).base(baseId);
+}
+
+// export tables map if not already exported
+export const tables = {
+  sessions: process.env.TB_SESSIONS || 'Sessions',
+  chats: process.env.TB_CHATS || 'Chats',
+  rigs: process.env.TB_RIGS || 'Rigs',
+  docs: process.env.TB_DOCS || 'Documents',
+  equipmentInstances:
+    process.env.TB_EQUIPMENT_INSTANCES ||
+    process.env.TB_RIG_EQUIP ||
+    'EquipmentInstances',
+};
+
 // ---------- New Functions for Symptom Router and Right-Rail Data ----------
 const BASE_ID = process.env.AIRTABLE_BASE_ID!;
 const API_KEY = process.env.AIRTABLE_API_KEY!;
