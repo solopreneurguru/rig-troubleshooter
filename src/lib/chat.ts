@@ -2,15 +2,12 @@ import Airtable from "airtable";
 import { withDeadline } from "./withDeadline";
 import { setIfExists } from "./airtable-metadata";
 
-const API_KEY = process.env.AIRTABLE_API_KEY!;
-const BASE_ID = process.env.AIRTABLE_BASE_ID!;
-import { TB_CHATS } from "./env";
-const TB_MESSAGES = process.env.TB_MESSAGES!;
+import { getAirtableEnv } from "./env";
+const A = getAirtableEnv();
 
 function getBase() {
-  if (!API_KEY || !BASE_ID) throw new Error("Airtable env missing");
-  Airtable.configure({ apiKey: API_KEY });
-  return new Airtable().base(BASE_ID);
+  Airtable.configure({ apiKey: A.AIRTABLE_KEY });
+  return new Airtable().base(A.AIRTABLE_BASE_ID);
 }
 
 function nowIso() {
@@ -37,7 +34,7 @@ async function firstPageWithDeadline(sel: any, ms = 8000) {
 
 export async function ensureChatForSession(sessionId: string) {
   const base = getBase();
-  const chats = base(TB_CHATS);
+  const chats = base(A.TB_MESSAGES);
 
   // 1) Fast path: exact match on denormalized text field {SessionId}
   try {

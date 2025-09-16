@@ -1,26 +1,16 @@
 import { NextResponse } from "next/server";
 import Airtable from "airtable";
 import { getTableFields } from "@/lib/airtable-metadata";
+import { getAirtableEnv } from "@/lib/env";
 
-const TB_EQUIPMENT =
-  process.env.TB_EQUIPMENT_INSTANCES ||
-  process.env.TB_RIG_EQUIP ||
-  "EquipmentInstances";
-
-function initAirtable() {
-  const API_KEY = process.env.AIRTABLE_API_KEY;
-  const BASE_ID = process.env.AIRTABLE_BASE_ID;
-  if (!API_KEY || !BASE_ID) {
-    throw new Error("Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID");
-  }
-  Airtable.configure({ apiKey: API_KEY });
-  return { base: new Airtable().base(BASE_ID), API_KEY, BASE_ID };
-}
+export const runtime = "nodejs";
 
 const validRecId = (v?: unknown) =>
   typeof v === "string" && v.startsWith("rec");
 
 export async function POST(req: Request) {
+  console.log("api_start", { route: "equipment/create", time: new Date().toISOString() });
+
   // Debug: tag this route so we can see it in Network response headers
   const routeName = "/api/equipment/create";
   const ok = (data: any, status = 200) =>
@@ -30,7 +20,9 @@ export async function POST(req: Request) {
     });
 
   try {
-    const { base, API_KEY, BASE_ID } = initAirtable();
+    const A = getAirtableEnv();
+    const base = new Airtable({ apiKey: A.key }).base(A.baseId);
+    
     const input = (await req.json().catch(() => ({}))) as {
       name?: string;
       serial?: string;
@@ -39,7 +31,7 @@ export async function POST(req: Request) {
     };
 
     // Discover allowed fields dynamically
-    const allow = new Set(await getTableFields(base, TB_EQUIPMENT));
+    const allow = new Set(await getTableFields(base, A.tables.equipment));
 
     const NAME_FIELDS = ["Name", "Title", "Equipment Name", "Label"];
     const SERIAL_FIELDS = ["SerialNumber", "Serial", "S/N", "Serial No"];
@@ -71,11 +63,11 @@ export async function POST(req: Request) {
     if (typeKey && validRecId(input?.typeId)) fields[typeKey] = [{ id: input!.typeId }];
 
     // Use Airtable REST — always correct payload shape: { records: [{ fields }] }
-    const url = `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TB_EQUIPMENT)}`;
+    const url = `https://api.airtable.com/v0/${A.baseId}/${encodeURIComponent(A.tables.equipment)}`;
     const res = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${API_KEY}`,
+        Authorization: `Bearer ${A.key}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ records: [{ fields }] }),
@@ -99,8 +91,13 @@ export async function POST(req: Request) {
     }
 
     return ok({ ok: true, id });
-  } catch (e: any) {
-    return new NextResponse(JSON.stringify({ ok: false, error: e?.message || "Failed to create equipment" }), {
+  } catch (err: any) {
+    console.error("api_error", { 
+      route: "equipment/create", 
+      err: String(err), 
+      stack: err?.stack 
+    });
+    return new NextResponse(JSON.stringify({ ok: false, error: String(err) }), {
       status: 500,
       headers: { "Content-Type": "application/json", "x-rt-route": routeName },
     });

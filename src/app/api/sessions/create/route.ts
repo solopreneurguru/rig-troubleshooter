@@ -1,6 +1,9 @@
 // src/app/api/sessions/create/route.ts
 import { NextResponse } from "next/server";
 import { airtableCreate } from "@/lib/airtable-rest";
+import { getAirtableEnv } from "@/lib/env";
+
+export const runtime = "nodejs";
 
 type Body = {
   equipmentId?: string;
@@ -12,9 +15,6 @@ type Body = {
   };
   problem: string;
 };
-
-const TB_EQUIP = process.env.TB_EQUIPMENT_INSTANCES || "EquipmentInstances";
-const TB_SESSIONS = process.env.TB_SESSIONS || "Sessions";
 
 // Try these link-field names (order matters; put your most-likely first)
 const EQUIP_LINK_CANDIDATES = [
@@ -49,8 +49,11 @@ function isUnknownFieldError(e: any) {
 }
 
 export async function POST(req: Request) {
+  console.log("api_start", { route: "sessions/create", time: new Date().toISOString() });
+  
   try {
     const body = (await req.json()) as Body;
+    const A = getAirtableEnv();
 
     // Basic validation
     if (!body?.problem || body.problem.trim().length < 3) {
@@ -68,7 +71,7 @@ export async function POST(req: Request) {
       if (body.newEquipment.serial) ef[pickSerial()] = body.newEquipment.serial;
 
       // IMPORTANT: DO NOT send CreatedAt or any computed/auto fields.
-      const createdEquip = await airtableCreate(TB_EQUIP, ef);
+      const createdEquip = await airtableCreate(A.tables.equipment, ef);
       equipmentId = createdEquip.id;
     }
 
@@ -82,7 +85,7 @@ export async function POST(req: Request) {
     for (const linkKey of EQUIP_LINK_CANDIDATES) {
       try {
         const fields = { ...baseFields, [linkKey]: [equipmentId] };
-        const session = await airtableCreate(TB_SESSIONS, fields);
+        const session = await airtableCreate(A.tables.sessions, fields);
         const res = NextResponse.json({
           ok: true,
           sessionId: session.id,
@@ -99,7 +102,7 @@ export async function POST(req: Request) {
     }
 
     // 3) If no candidate link field exists, create session without link and return a hint
-    const minimal = await airtableCreate(TB_SESSIONS, baseFields);
+    const minimal = await airtableCreate(A.tables.sessions, baseFields);
     return NextResponse.json({
       ok: true,
       sessionId: minimal.id,
@@ -111,6 +114,11 @@ export async function POST(req: Request) {
       lastError: String(lastErr?.message || lastErr),
     });
   } catch (err: any) {
-    return NextResponse.json({ ok: false, error: err?.message || String(err) }, { status: 500 });
+    console.error("api_error", { 
+      route: "sessions/create", 
+      err: String(err), 
+      stack: err?.stack 
+    });
+    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }

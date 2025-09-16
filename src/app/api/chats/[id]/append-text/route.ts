@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { airtableGet, airtablePatch, F_CHAT_TEXT } from "@/lib/airtable-rest";
-import { TB_CHATS } from "@/lib/env";
+import { getAirtableEnv } from "@/lib/env";
 import { getId, type IdContext } from "@/lib/route-ctx";
 
 type Role = "user" | "assistant" | "system";
@@ -27,7 +27,8 @@ export async function POST(
     }
 
     // fetch current text (if any)
-    const current = await airtableGet(TB_CHATS, chatId);
+    const A = getAirtableEnv();
+    const current = await airtableGet(A.TB_MESSAGES, chatId);
     const existing = current?.fields?.[F_CHAT_TEXT] ?? "";
 
     // normalize line with role/prefix/suffix
@@ -42,7 +43,7 @@ export async function POST(
     const MAX = 95_000;
     const trimmed = joined.length > MAX ? joined.slice(joined.length - MAX) : joined;
 
-    await airtablePatch(TB_CHATS, chatId, { [F_CHAT_TEXT]: trimmed });
+    await airtablePatch(A.TB_MESSAGES, chatId, { [F_CHAT_TEXT]: trimmed });
 
     return NextResponse.json({ ok: true, len: trimmed.length });
   } catch (err: any) {

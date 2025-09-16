@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { getTableFields } from "@/lib/airtable-metadata";
 import { withDeadline } from "@/lib/withDeadline";
-import { requireEnv, TB_CHATS } from "@/lib/env";
+import { getAirtableEnv } from "@/lib/env";
 import { logServer } from "@/lib/logger";
 import { getId, type IdContext } from "@/lib/route-ctx";
 
@@ -64,16 +64,14 @@ export async function GET(
       limit
     });
 
-    // Require env vars with aliases
-    const AIRTABLE_KEY = requireEnv("AIRTABLE_KEY", ["AIRTABLE_REST_KEY", "AIRTABLE_API_KEY"]);
-    const AIRTABLE_BASE_ID = requireEnv("AIRTABLE_BASE_ID");
-    const TB_CHATS = requireEnv("TB_CHATS", ["TB_MESSAGES"]);
+    // Get Airtable env vars
+    const A = getAirtableEnv();
 
     if (!validRecId(sessionId)) {
       return NextResponse.json({ error: "Invalid session id" }, { status: 400 });
     }
 
-    const schema = await getSchema(TB_CHATS);
+    const schema = await getSchema(A.tables.messages);
   const fields = new Set(Object.keys((schema as any)?.fields || {}));
   const linkKey = [...SESSION_LINK_FIELDS].find(f => fields.has(f)) || "Session";
   const roleKey = [...ROLE_FIELDS].find(f => fields.has(f)) || "Role";
@@ -95,9 +93,9 @@ export async function GET(
   q.set("filterByFormula", formula);
 
   const res = await airtableFetch(
-    `${TB_CHATS}?${q.toString()}`,
-    AIRTABLE_KEY,
-    AIRTABLE_BASE_ID,
+    `${A.tables.messages}?${q.toString()}`,
+    A.key,
+    A.baseId,
     { method: "GET" }
   );
   const json = await res.json().catch(() => ({})) as any;
@@ -142,9 +140,8 @@ export async function POST(
   try {
     const sessionId = await getId(ctx);
 
-    // Require env vars with aliases
-    const AIRTABLE_KEY = requireEnv("AIRTABLE_KEY", ["AIRTABLE_REST_KEY", "AIRTABLE_API_KEY"]);
-    const AIRTABLE_BASE_ID = requireEnv("AIRTABLE_BASE_ID");
+    // Get Airtable env vars
+    const A = getAirtableEnv();
     if (!validRecId(sessionId)) {
       return NextResponse.json({ error: "Invalid session id" }, { status: 400 });
     }
@@ -157,7 +154,7 @@ export async function POST(
       );
     }
 
-  const schema = await getSchema(TB_CHATS);
+  const schema = await getSchema(A.tables.messages);
   const fields = new Set(Object.keys((schema as any)?.fields || {}));
   const linkKey = [...SESSION_LINK_FIELDS].find(f => fields.has(f));
   const roleKey = [...ROLE_FIELDS].find(f => fields.has(f));
@@ -182,9 +179,9 @@ export async function POST(
   for (const k of CREATED_AT_FIELDS) delete f[k];
 
   const res = await airtableFetch(
-    TB_CHATS,
-    AIRTABLE_KEY,
-    AIRTABLE_BASE_ID,
+    A.tables.messages,
+    A.key,
+    A.baseId,
     {
       method: "POST",
       body: JSON.stringify({ records: [{ fields: f }] }),

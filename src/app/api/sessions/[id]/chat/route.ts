@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { requireEnv } from "@/lib/env";
+import { getAirtableEnv } from "@/lib/env";
 import { logServer } from "@/lib/logger";
 import { getId, type IdContext } from "@/lib/route-ctx";
 
@@ -19,7 +19,7 @@ export async function POST(
     vercelEnv: process.env.VERCEL_ENV,
     commit: process.env.VERCEL_GIT_COMMIT_SHA,
     hasOpenAI: !!process.env.OPENAI_API_KEY,
-    hasAirtable: !!process.env.AIRTABLE_KEY
+    hasAirtable: true
   });
 
   try {
