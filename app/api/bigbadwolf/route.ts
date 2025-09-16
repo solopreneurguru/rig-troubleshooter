@@ -1,9 +1,11 @@
+import { NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-import { NextResponse } from 'next/server';
 import { getAirtableBase, tables } from '@/lib/airtable';
+
+const REQUIRED_ENVS = ['AIRTABLE_API_KEY','AIRTABLE_BASE_ID'];
 
 async function count(base: any, table: string) {
   try {
@@ -17,11 +19,24 @@ async function count(base: any, table: string) {
 
 export async function GET() {
   const envKeys = [
-    'AIRTABLE_API_KEY','AIRTABLE_BASE_ID',
+    ...REQUIRED_ENVS,
     'TB_SESSIONS','TB_CHATS','TB_RIGS','TB_DOCS','TB_EQUIPMENT_INSTANCES',
     'TB_RULEPACKS','BLOB_READ_WRITE_TOKEN','OPENAI_API_KEY','ADMIN_DEV_TOKEN'
   ];
   const envs = Object.fromEntries(envKeys.map(k => [k, !!process.env[k]]));
+
+  // If core envs missing, do NOT try Airtable — return JSON immediately.
+  const missingCore = REQUIRED_ENVS.filter(k => !process.env[k]);
+  if (missingCore.length) {
+    return NextResponse.json({
+      ok: false,
+      reason: 'MISSING_CORE_ENVS',
+      envs,
+      tables: {},
+      v2Packs: { activeV2Count: 0, error: 'Skipped: missing core envs' },
+      ts: new Date().toISOString()
+    }, { status: 200 });
+  }
 
   let tablesStatus: any = {};
   let v2Packs = { activeV2Count: 0, error: null as string | null };
@@ -55,5 +70,11 @@ export async function GET() {
     tablesStatus = { fatal: String(e?.message ?? e) };
   }
 
-  return NextResponse.json({ ok: true, envs, tables: tablesStatus, v2Packs, ts: new Date().toISOString() });
+  return NextResponse.json({
+    ok: true,
+    envs,
+    tables: tablesStatus,
+    v2Packs,
+    ts: new Date().toISOString()
+  });
 }
