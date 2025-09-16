@@ -2,6 +2,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+type EnvMap = Record<string, boolean>;
+type TablePing = { ok?: boolean; sampleCount?: number; error?: string | null };
+type BigBadWolfResp = {
+  envs?: EnvMap;
+  tables?: Record<string, TablePing>;
+  v2Packs?: { activeV2Count?: number; error?: string | null };
+};
+
 const root = process.cwd();
 const apiDir = path.join(root, 'app', 'api');
 
@@ -67,20 +75,21 @@ import('node:https')
   .catch(() => fetch('http://localhost:3000' + url))
   .then(async (res: any) => {
     if (!res || !res.ok) throw new Error(`HTTP ${res?.status}`);
-    const data = await res.json();
+    const data: BigBadWolfResp = await res.json();
     console.log(JSON.stringify(data, null, 2));
     if (data?.envs) {
-      const missingEnvs = Object.entries(data.envs).filter(([k,v]) => !v).map(([k])=>k);
+      const missingEnvs = Object.entries(data.envs ?? {} as EnvMap).filter(([, v]) => !v).map(([k]) => k);
       if (missingEnvs.length) {
         console.log('\nMissing envs:', missingEnvs.join(', '));
       }
     }
     if (data?.tables) {
-      const failures = Object.entries(data.tables).filter(([,v]: any) => v && v.ok === false);
+      const tableEntries = Object.entries(data.tables ?? {}) as Array<[string, TablePing]>;
+      const failures = tableEntries.filter(([, v]) => v && v.ok === false);
       if (failures.length) {
         console.log('\nAirtable table failures:');
         for (const [name, v] of failures) {
-          console.log(`• ${name}: ${v.error || 'unknown error'}`);
+          console.log(`• ${name}: ${v.error ?? 'unknown error'}`);
         }
       }
     }

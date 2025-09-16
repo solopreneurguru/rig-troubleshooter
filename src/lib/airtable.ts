@@ -575,8 +575,8 @@ export function getAirtableBase(): _AirtableBase {
   // Lazy checks so import-time doesn't throw
   const apiKey = _need('AIRTABLE_API_KEY');
   const baseId = _need('AIRTABLE_BASE_ID');
-  // @ts-expect-error types from airtable pkg are looser in CJS/ESM
-  return new Airtable({ apiKey }).base(baseId);
+  const client = new Airtable({ apiKey });
+  return client.base(baseId);
 }
 
 // export tables map if not already exported
