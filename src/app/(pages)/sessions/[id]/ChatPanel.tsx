@@ -14,6 +14,7 @@ export default function ChatPanel({ sessionId, onMessageCountChange, uploadCompo
   const [text, setText] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
+  const [llmFallback, setLlmFallback] = React.useState(false);
 
   // Debug logging and sessionId validation
   React.useEffect(() => {
@@ -58,8 +59,11 @@ export default function ChatPanel({ sessionId, onMessageCountChange, uploadCompo
         if (res.ok && j?.ok && j?.content) {
           // append assistant reply to local state
           setMessages(prev => [...prev, { role:'assistant', content: j.content }]);
+          // update fallback state
+          setLlmFallback(!!j?.fallback);
         } else {
           // non-fatal; UI already displays our saved fallback from the API route
+          setLlmFallback(true);
         }
       } catch {
         // swallow: we already saved a fallback server-side
@@ -106,6 +110,11 @@ export default function ChatPanel({ sessionId, onMessageCountChange, uploadCompo
       <div className="p-2 border-t border-neutral-800">
         {err && <div className="text-red-400 text-xs mb-1">❌ {err}</div>}
         {!sessionId && <div className="text-red-400 text-xs mb-1">❌ No session id</div>}
+        {llmFallback && (
+          <div className="mb-2 text-xs rounded bg-amber-200 text-amber-900 px-3 py-2">
+            Assistant is in offline/fallback mode (rate limit or disabled). You can keep troubleshooting—rule steps and uploads still work.
+          </div>
+        )}
         <div className="flex gap-2">
           <textarea
             className="flex-1 rounded bg-neutral-900 p-2 text-sm"
