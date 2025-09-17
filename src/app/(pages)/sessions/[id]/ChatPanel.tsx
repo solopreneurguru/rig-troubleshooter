@@ -42,17 +42,27 @@ export default function ChatPanel({ sessionId, onMessageCountChange, uploadCompo
       setText("");
       await load();
 
-      // Get stub reply
-      const replyRes = await fetch("/api/chats/stub-reply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, text }),
-      });
-      const replyData = await replyRes.json().catch(() => ({}));
-      if (replyData?.ok && replyData.reply) {
-        // Send assistant reply
-        await sendMessage(sessionId, 'assistant', replyData.reply);
-        await load();
+      // Compose recent messages (limit to last 10 for token economy)
+      const recent = [...messages, { role:'user', content:text }].slice(-10).map(m => ({
+        role: m.role as 'system'|'user'|'assistant',
+        content: m.content
+      }));
+
+      try {
+        const res = await fetch('/api/ai/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, messages: recent })
+        });
+        const j = await res.json();
+        if (res.ok && j?.ok && j?.content) {
+          // append assistant reply to local state
+          setMessages(prev => [...prev, { role:'assistant', content: j.content }]);
+        } else {
+          // non-fatal; UI already displays our saved fallback from the API route
+        }
+      } catch {
+        // swallow: we already saved a fallback server-side
       }
     } catch (e: any) {
       setErr(e?.message || "Failed to send");
