@@ -3,18 +3,13 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-import { getAirtableBase, tables } from '@/lib/airtable';
+import { createChatMessage } from '@/lib/airtable';
 
 type Msg = { role: 'system'|'user'|'assistant'; content: string };
 
 async function saveAssistantMessage(sessionId: string, content: string) {
   try {
-    const base = getAirtableBase();
-    await base(tables.chats).create([{ fields: {
-      Session: [sessionId], // adjust if your link field expects recordId vs name
-      Role: 'assistant',
-      Content: content,
-    }}]);
+    await createChatMessage({ sessionId, role:'assistant', content, source:'ai' });
   } catch {}
 }
 

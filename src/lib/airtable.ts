@@ -844,3 +844,43 @@ export async function appendAction(sessionId: string, a: {
   if (a.photoUrl !== undefined) fields.PhotoUrl = a.photoUrl;
   await tbl.create([{ fields }]);
 }
+
+// Chat message helper with field name tolerance
+type ChatFields = {
+  sessionId: string;
+  role: 'user'|'assistant'|'system';
+  content: string;
+  createdBy?: string | null;
+  source?: string | null;
+};
+export async function createChatMessage(fields: ChatFields) {
+  const base = getAirtableBase();
+  const tableName = tables.chats;
+
+  // make link + text field tolerant
+  const f: Record<string, any> = {};
+  // link to Session
+  const linkCandidates = ['Session', 'SessionId', 'Session Link', 'Session Ref'];
+  for (const k of linkCandidates) { f[k] = [{ id: fields.sessionId }]; }
+  // role
+  for (const k of ['Role','role','Speaker']) { f[k] = fields.role; }
+  // content
+  for (const k of ['Content','Text','Message','Body']) { f[k] = fields.content; }
+  // optional metadata
+  if (fields.createdBy) for (const k of ['CreatedBy','Author','User']) f[k] = fields.createdBy;
+  if (fields.source) for (const k of ['Source','Channel']) f[k] = fields.source;
+
+  // Try create; if table rejects unknown fields, retry with a lean set
+  try {
+    const recs = await base(tableName).create([{ fields: f as any }]);
+    return { ok: true, id: recs[0].id };
+  } catch (e) {
+    const lean = {
+      Session: [fields.sessionId],
+      Role: fields.role,
+      Content: fields.content,
+    };
+    const recs = await base(tableName).create([{ fields: lean as any }]);
+    return { ok: true, id: recs[0].id };
+  }
+}
