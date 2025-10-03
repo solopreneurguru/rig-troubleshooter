@@ -585,11 +585,72 @@ export const tables = {
   chats: process.env.TB_CHATS || 'Chats',
   rigs: process.env.TB_RIGS || 'Rigs',
   docs: process.env.TB_DOCS || 'Documents',
-  equipmentInstances:
-    process.env.TB_EQUIPMENT_INSTANCES ||
-    process.env.TB_RIG_EQUIP ||
-    'EquipmentInstances',
+  equipmentInstances: process.env.TB_EQUIPMENT_INSTANCES || process.env.TB_RIG_EQUIP || 'EquipmentInstances',
+  rulepacks: process.env.TB_RULEPACKS || 'RulePacks',
+  actions: process.env.TB_ACTIONS || 'Actions',
+  readings: process.env.TB_READINGS || 'Readings',
+  findings: process.env.TB_FINDINGS || 'Findings',
 };
+
+// ---------- Action and Reading Creation Helpers ----------
+export type ActionCreateV2 = {
+  sessionId: string;
+  nodeId: string;
+  title: string;
+  detail?: string | null;
+  outcome?: 'pass'|'fail'|'info';
+  source?: string | null;
+};
+export async function createActionV2(a: ActionCreateV2) {
+  const base = getAirtableBase();
+  const fields: Record<string, any> = {};
+  for (const k of ['Session','SessionId']) fields[k] = [{ id: a.sessionId }];
+  for (const k of ['NodeId','StepId']) fields[k] = a.nodeId;
+  for (const k of ['Title','Name']) fields[k] = a.title;
+  if (a.detail) for (const k of ['Detail','Notes','Description']) fields[k] = a.detail;
+  if (a.outcome) for (const k of ['Outcome','Result','Status']) fields[k] = a.outcome;
+  if (a.source) for (const k of ['Source','Channel']) fields[k] = a.source;
+  try {
+    const r = await base(tables.actions).create([{ fields }] as any);
+    return { ok: true, id: r[0].id };
+  } catch {
+    const lean = { Session: [{ id: a.sessionId }], NodeId: a.nodeId, Title: a.title };
+    const r = await base(tables.actions).create([{ fields: lean }] as any);
+    return { ok: true, id: r[0].id };
+  }
+}
+
+export type ReadingCreateV2 = {
+  sessionId: string;
+  nodeId: string;
+  measure?: string | null;   // e.g., 'V'
+  unit?: string | null;      // e.g., 'VDC'
+  points?: string | null;    // e.g., 'A16-B12'
+  expected?: string | null;  // e.g., '24±2'
+  value?: string | number | null;
+  pass?: boolean | null;
+};
+export async function createReadingV2(rdg: ReadingCreateV2) {
+  const base = getAirtableBase();
+  const f: Record<string, any> = {};
+  for (const k of ['Session','SessionId']) f[k] = [{ id: rdg.sessionId }];
+  for (const k of ['NodeId','StepId']) f[k] = rdg.nodeId;
+  if (rdg.measure) for (const k of ['Measure','Type']) f[k] = rdg.measure;
+  if (rdg.unit) for (const k of ['Unit']) f[k] = rdg.unit;
+  if (rdg.points) for (const k of ['Points','TestPoints']) f[k] = rdg.points;
+  if (rdg.expected) for (const k of ['Expected','Spec']) f[k] = rdg.expected;
+  if (rdg.value !== undefined) for (const k of ['Value','Reading']) f[k] = rdg.value;
+  if (rdg.pass != null) for (const k of ['Pass','OK']) f[k] = !!rdg.pass;
+
+  try {
+    const r = await base(tables.readings).create([{ fields: f }] as any);
+    return { ok: true, id: r[0].id };
+  } catch {
+    const lean = { Session: [{ id: rdg.sessionId }], NodeId: rdg.nodeId, Value: rdg.value ?? null };
+    const r = await base(tables.readings).create([{ fields: lean }] as any);
+    return { ok: true, id: r[0].id };
+  }
+}
 
 // ---------- New Functions for Symptom Router and Right-Rail Data ----------
 const BASE_ID = process.env.AIRTABLE_BASE_ID!;

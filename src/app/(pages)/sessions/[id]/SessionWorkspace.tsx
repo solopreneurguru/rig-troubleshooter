@@ -25,6 +25,7 @@ async function hydrateMessages(sessionId: string, addMessage?: (m: any) => void)
 import ChatBubble from "./ChatBubble";
 import DocsPanel from "./DocsPanel";
 import ReportComposer from "./ReportComposer";
+import StepRunner from "./StepRunner";
 import UploadFromChat from "./UploadFromChat";
 import "./ChatMessageList.css";
 
@@ -314,6 +315,9 @@ export default function SessionWorkspace({ sessionId, equipmentId }: Props) {
             </div>
           )}
         </div>
+
+        {/* Step Runner */}
+        <StepRunner sessionId={sessionId} />
 
         {/* Chat Area */}
         <div className="flex-1 flex flex-col relative">
