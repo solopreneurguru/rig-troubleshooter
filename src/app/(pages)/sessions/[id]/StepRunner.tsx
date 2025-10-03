@@ -8,6 +8,8 @@ export default function StepRunner({ sessionId }: { sessionId: string }) {
   const [confirmed, setConfirmed] = useState(false);
   const [why, setWhy] = useState<string | null>(null);
   const [cite, setCite] = useState<any[]>([]);
+  const [noPack, setNoPack] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   async function loadFirst() {
     setLoading(true);
@@ -20,6 +22,9 @@ export default function StepRunner({ sessionId }: { sessionId: string }) {
       const j = await res.json();
       if (res.ok && j.ok) {
         setNode(j.node); setWhy(j.why || null); setCite(j.cite || []);
+        setNoPack(false);
+      } else if (!res.ok && j?.error === 'NO_PACK_V2') {
+        setNoPack(true);
       }
     } finally { setLoading(false); }
   }
@@ -37,11 +42,39 @@ export default function StepRunner({ sessionId }: { sessionId: string }) {
       if (res.ok && j.ok) {
         setNode(j.node); setWhy(j.why || null); setCite(j.cite || []);
         setValue(''); setConfirmed(false);
+        setNoPack(false);
+      } else if (!res.ok && j?.error === 'NO_PACK_V2') {
+        setNoPack(true);
       }
     } finally { setLoading(false); }
   }
 
   useEffect(() => { loadFirst(); }, []);
+
+  if (noPack) {
+    return (
+      <div className="mb-4 rounded-xl border border-amber-400 text-amber-900 bg-amber-100 p-4">
+        <div className="font-semibold mb-1">No v2 RulePack found</div>
+        <div className="text-sm mb-3">
+          We can seed a default TopDrive Basic Power (v2) pack. You can edit it later in Airtable.
+        </div>
+        <button
+          disabled={seeding}
+          onClick={async () => {
+            try { 
+              setSeeding(true); 
+              await fetch('/api/rulepacks/seed?confirm=1', { cache:'no-store' }); 
+              setNoPack(false); 
+              await loadFirst(); 
+            }
+            finally { setSeeding(false); }
+          }}
+          className="bg-green-600 hover:bg-green-700 text-white text-sm px-3 py-2 rounded disabled:opacity-50">
+          {seeding ? 'Seeding…' : 'Seed v2 now'}
+        </button>
+      </div>
+    );
+  }
 
   if (!node) return <div className="mb-4 text-sm text-neutral-400">Loading step…</div>;
 
